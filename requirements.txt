@@ -1,0 +1,9 @@
+# 运行查看器需要
+Pillow>=10.0
+pycryptodome>=3.19
+
+# 新物品市场名解析 / 素材提取需要
+UnityPy>=1.10
+
+# 仅在用 extract_steam_token.py（从浏览器 cookie 库取登录令牌）时需要
+cryptography>=42.0

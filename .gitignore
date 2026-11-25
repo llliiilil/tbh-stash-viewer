@@ -1,0 +1,35 @@
+# ---------- 运行时数据（本机私有，永不入库） ----------
+item_prices.json
+market_names.json
+en_names_cache.json
+viewer_prefs.json
+steam_cookies.json
+steam_token_cache.json
+edge_login_profile/
+
+# 日志
+*.log
+prices_log.txt
+fg_debug.log
+launch_log.txt
+viewer_run.log
+
+# ---------- 游戏素材与派生数据（版权属游戏方，不入库） ----------
+ui/
+icons/
+csv/
+items_zh.csv
+localization_zh.json
+
+# ---------- 历史备份 / 临时产物 ----------
+_backup_*/
+_unused/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+build/
+dist/
+*.spec
+_debug_*.png
+*.tmp
