@@ -572,14 +572,24 @@ def price_one_via_page(hname, log=None):
             "cny_volume": st.get("volume")}
 
 
-def sync_new_items(owned, log=print, limit=5):
+def sync_new_items(owned, new_keys=None, log=print, limit=5, backlog=1):
     """仓库里新出现、价格表里还没有条目的物品：解析出市场名，补一条空记录，
-    这样本轮的 fast_refresh 就能把它当普通物品取价。每轮最多试 limit 件，
-    失败的在 market_names.json 里按 3 天节流，不会反复请求。"""
+    这样本轮的 fast_refresh 就能把它当普通物品取价。
+      new_keys  本次新出现的 ItemKey（优先解析，最多 limit 件）
+      backlog   历史积压（以前就没解析出来、也不是这次新增的）每轮最多试几件，
+                默认 1 件，避免加一件新物品时被一堆旧账拖着转圈
+    失败的在 market_names.json 里按 3 天节流（网络失败 1 小时后重试），不会反复请求。"""
     state = load_state()
     prices = state.get("prices", {})
-    missing = sorted(str(k) for k in (owned or ()) if str(k) not in prices)
+    missing = [str(k) for k in (owned or ()) if str(k) not in prices]
     if not missing:
+        return 0
+    fresh = set(str(k) for k in (new_keys or ()))
+    front = [k for k in missing if k in fresh]
+    rest = [k for k in missing if k not in fresh]
+    picks = front[:limit] + rest[:max(0, backlog)]
+    if not picks:
+        log("  [names] 没有需要解析的新物品（历史积压留到之后的轮次）")
         return 0
     try:
         import market_names
@@ -587,7 +597,7 @@ def sync_new_items(owned, log=print, limit=5):
         log(f"  [names] 模块不可用（{type(e).__name__}: {e}）")
         return 0
     try:
-        got = market_names.resolve_missing(missing, limit=limit, log=log)
+        got = market_names.resolve_missing(picks, limit=len(picks), log=log)
     except Exception as e:
         log(f"  [names] 解析异常（{type(e).__name__}: {e}）")
         return 0
@@ -641,8 +651,15 @@ def _overview_refresh(priority=None, log=print, only_priority=False, on_save=Non
     state = load_state()
     prices = state.get("prices", {})
     keys = list(prices)
+    now = time.time()
     if priority and only_priority:
-        keys = [k for k in keys if k in priority]
+        # 只刷「该刷的」：从没取过价的新物品，或超过 105 分钟没更新的。
+        # 数量变化（同一个 ItemKey 又多了一个）不产生新键，也不会被这里命中。
+        keys = [k for k in keys if k in priority
+                and (not prices[k].get("cny_ts")
+                     or now - (prices[k].get("cny_ts") or 0) > STALE_CENTS_SECONDS)]
+        # 新物品（没有 cny_ts）排最前，其次是越久没更新的越靠前
+        keys.sort(key=lambda k: prices[k].get("cny_ts") or 0)
     else:
         # 组内按 cny_ts 从旧到新：从没拿到过价的排最前。这样一轮被限流打断后，
         # 下一轮先补没轮到的物品，而不是把清单头部的再拉一遍。

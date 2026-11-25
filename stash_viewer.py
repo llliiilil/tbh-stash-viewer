@@ -26,7 +26,7 @@ from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 SAVE = os.environ.get("TBH_SAVE") or os.path.expandvars(
     r"%USERPROFILE%\AppData\LocalLow\TesseractStudio\TaskbarHero\SaveFile_Live.es3")
@@ -1104,12 +1104,16 @@ class Viewer(tk.Tk):
                         if self._mkt_lock.acquire(blocking=False):
                             try:
                                 self._set_status("更新中 0%", anim=True, pct=0)
-                                # 仓库里新出现、价格表还没条目的物品：先把市场名解析出来
-                                # （每轮最多 5 件，失败的 3 天内不重复试），再由本轮取价
+                                # 只有本次新出现的 ItemKey 才解析市场名（最多 5 件）；
+                                # 以前就缺条目的历史积压每轮最多补 1 件，别把一轮拖长
+                                seen = getattr(self, "_owned_seen", set())
+                                new_keys = owned - seen
                                 try:
-                                    up.sync_new_items(owned, log=lambda m: self._price_log(m))
+                                    up.sync_new_items(owned, new_keys=new_keys,
+                                                      log=lambda m: self._price_log(m))
                                 except Exception as e:
                                     self._price_log(f"[names] {type(e).__name__}: {e}")
+                                self._owned_seen = set(owned)
                                 up.fast_refresh(priority=owned, only_priority=True,
                                                 log=self._mk_plog("更新中"),
                                                 on_save=reload_, stop=self._stop_evt)
