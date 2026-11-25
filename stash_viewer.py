@@ -26,7 +26,7 @@ from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 SAVE = os.environ.get("TBH_SAVE") or os.path.expandvars(
     r"%USERPROFILE%\AppData\LocalLow\TesseractStudio\TaskbarHero\SaveFile_Live.es3")
@@ -887,7 +887,7 @@ class Viewer(tk.Tk):
         其余行写 prices_log.txt。"""
         def plog(msg):
             s = str(msg).strip()
-            m = re.match(r"进度 (\d+)/(\d+)", s)
+            m = re.match(r"(?:回退)?进度 (\d+)/(\d+)", s)
             if m:
                 pct = int(m.group(1)) * 100 // max(1, int(m.group(2)))
                 self._set_status(f"{phase} {pct}%", anim=True, pct=pct)
@@ -1094,10 +1094,11 @@ class Viewer(tk.Tk):
                     owned = self._owned_keys()
                     if not owned:
                         # 存档里暂时读不到仓库/背包物品（存档未加载/为空）：什么都不请求，1 分钟后再看
-                        last_fast = time.time() - up.FAST_INTERVAL + 60
+                        # 存档还没解析完（启动瞬间读不到）：10 秒后再看，别白等一轮
+                        last_fast = time.time() - up.FAST_INTERVAL + 10
                         if not getattr(self, "_owned_empty_logged", False):
                             self._owned_empty_logged = True
-                            self._price_log("仓库/背包为空，跳过人民币刷新（1 分钟后再检查）")
+                            self._price_log("仓库/背包为空，跳过人民币刷新（10 秒后再检查）")
                     else:
                         self._owned_empty_logged = False
                         if self._mkt_lock.acquire(blocking=False):
@@ -1365,16 +1366,21 @@ class Viewer(tk.Tk):
         try:
             m = os.path.getmtime(SAVE)
             if m != self._last_mtime:
-                self._last_mtime = m
-                data = parse_save()
-                sig = json.dumps(data, sort_keys=True)
-                if sig != self._last_sig:
-                    self._last_sig = sig
-                    self.data = data
-                    if self.tab not in self._pages_def:
-                        self.tab = ("仓库", 0)
-                    self.compose()
-                    self._rebuild_hotspots()
+                try:
+                    data = parse_save()
+                except Exception:
+                    # 游戏正在写存档时解密可能失败：不记 mtime，0.5 秒后再试（否则会一直停在空仓库）
+                    data = None
+                if data is not None:
+                    self._last_mtime = m
+                    sig = json.dumps(data, sort_keys=True)
+                    if sig != self._last_sig:
+                        self._last_sig = sig
+                        self.data = data
+                        if self.tab not in self._pages_def:
+                            self.tab = ("仓库", 0)
+                        self.compose()
+                        self._rebuild_hotspots()
         except Exception:
             pass
         if getattr(self, "_mkt_anim", False) and not getattr(self, "_anim_scheduled", False):

@@ -61,6 +61,9 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
     "Referer": "https://steamcommunity.com/market/",
 }
+# 11-25 实测：市场搜索页与 priceoverview 是同一条规则——浏览器 UA 直接 429 / ReadTimeout，
+# curl UA 200（一页约 3.7MB，热身后 1.5 秒）。页面兜底与按名解析一律用这套头。
+MARKET_HEADERS = {"User-Agent": "curl/8.9.0", "Accept-Language": "en-US,en;q=0.9"}
 
 
 # ---------- 人民币行情（priceoverview，匿名，进程内全局限速） ----------
@@ -416,9 +419,11 @@ def market_q_refresh(priority, log=print, stop=None, on_save=None, stale_only=Tr
     ck = get_auth(log).cookies()
     log(f"  [market] 逐件接口不可用：改用市场搜索页补 {len(todo)} 件（每件一张页面）")
     done = updated = 0
+    fails = 0
     stopped = lambda: stop is not None and stop.is_set()
     proxy = os.environ.get("STEAM_PROXY", PROXY)
-    with httpx.Client(timeout=40, proxy=proxy or None, headers=HEADERS, cookies=ck or {}) as cl:
+    with httpx.Client(timeout=40, proxy=proxy or None, headers=MARKET_HEADERS,
+                      cookies=ck or {}) as cl:
         for k in todo:
             if stopped():
                 break
@@ -427,11 +432,16 @@ def market_q_refresh(priority, log=print, stop=None, on_save=None, stale_only=Tr
                 r = cl.get(MARKET_SEARCH_URL,
                            params={"appid": APPID, "q": h, "count": MARKET_PAGE_SIZE, "start": 0})
             except Exception as e:
+                fails += 1
                 log(f"  市场页请求失败（{type(e).__name__}），跳过 {h[:30]}")
+                if fails >= 3:
+                    log("  市场页连续 3 次失败，停止回退（剩下的下轮再补）")
+                    break
                 continue
             if r.status_code != 200:
                 log(f"  市场页 HTTP {r.status_code}，停止回退")
                 break
+            fails = 0
             _, items = parse_market_page(r.text)
             done += 1
             hit = next((x for x in (items or []) if x["hash"] == h), None)
@@ -466,6 +476,7 @@ def market_q_refresh(priority, log=print, stop=None, on_save=None, stale_only=Tr
             on_save()
         except Exception as e:
             log(f"  on_save 回调异常: {type(e).__name__}: {e}")
+    log(f"  回退结束：处理 {done}/{len(todo)} 件，更新 {updated} 件")
     return updated
 
 
@@ -542,7 +553,8 @@ def price_one_via_page(hname, log=None):
     ck = get_auth(log or print).cookies()
     proxy = os.environ.get("STEAM_PROXY", PROXY)
     try:
-        with httpx.Client(timeout=40, proxy=proxy or None, headers=HEADERS, cookies=ck or {}) as cl:
+        with httpx.Client(timeout=40, proxy=proxy or None, headers=MARKET_HEADERS,
+                          cookies=ck or {}) as cl:
             r = cl.get(MARKET_SEARCH_URL,
                        params={"appid": APPID, "q": hname, "count": MARKET_PAGE_SIZE, "start": 0})
     except Exception as e:

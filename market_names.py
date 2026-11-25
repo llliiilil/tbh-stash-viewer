@@ -185,7 +185,12 @@ def resolve_one(item_key, log=print):
     c = _load_cache()
     rows = item_rows()
     r = rows.get(str(item_key)) or {}
+    if not r:
+        return None                      # csv 里没这条：先不记时间，等数据更新后再说
     if not r.get("marketable"):
+        # 不可交易物品本来就没有市场名：记一次时间，否则每轮都会占掉 5 个名额里的一格
+        c["tried"][str(item_key)] = time.time()
+        _save_cache()
         return None
     en = en_names(log).get(r.get("NameKey"))
     if not en:
@@ -198,7 +203,9 @@ def resolve_one(item_key, log=print):
     proxy = os.environ.get("STEAM_PROXY", up.PROXY)
     try:
         import httpx
-        with httpx.Client(timeout=40, proxy=proxy or None, headers=up.HEADERS, cookies=ck) as cl:
+        with httpx.Client(timeout=40, proxy=proxy or None,
+                          headers=getattr(up, "MARKET_HEADERS", up.HEADERS),
+                          cookies=ck) as cl:
             resp = cl.get(up.MARKET_SEARCH_URL,
                           params={"appid": up.APPID, "q": en, "count": up.MARKET_PAGE_SIZE, "start": 0})
     except Exception as e:
