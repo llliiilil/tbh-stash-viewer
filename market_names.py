@@ -210,6 +210,9 @@ def resolve_one(item_key, log=print):
                           params={"appid": up.APPID, "q": en, "count": up.MARKET_PAGE_SIZE, "start": 0})
     except Exception as e:
         log(f"  [names] {en} 搜索失败（{type(e).__name__}）")
+        # 网络失败不占 3 天节流：记成「1 小时后可重试」，免得同一件每轮都等满 40 秒超时
+        c["tried"][str(item_key)] = time.time() - RETRY_SECONDS + 3600
+        _save_cache()
         return None
     c["tried"][str(item_key)] = time.time()
     if resp.status_code != 200:
@@ -238,7 +241,7 @@ def resolve_missing(item_keys, limit=8, log=print):
     """给一批 ItemKey 解析市场名，返回 {ItemKey: hash}。带上缓存与重试节流。"""
     c = _load_cache()
     got = {}
-    done = 0
+    pending = []
     for k in item_keys:
         k = str(k)
         if k in c["names"]:
@@ -246,12 +249,15 @@ def resolve_missing(item_keys, limit=8, log=print):
             continue
         if time.time() - (c["tried"].get(k) or 0) < RETRY_SECONDS:
             continue
-        if done >= limit:
-            break
+        pending.append(k)
+    todo = pending[:limit]
+    done = 0
+    for k in todo:
         done += 1
+        # 写成「进度 n/m」：查看器把它显示成「更新中 x%」，解析名字这段时间也有进度
+        log(f"  进度 {done}/{len(todo)}（解析市场名 {k}）")
         h = resolve_one(k, log)
         if h:
             got[k] = h
-        if done:
-            time.sleep(2)
+        time.sleep(2)
     return got
