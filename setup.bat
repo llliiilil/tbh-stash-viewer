@@ -3,22 +3,21 @@ setlocal
 cd /d "%~dp0"
 title TaskbarHero Stash Viewer - Setup
 
-if defined TBH_PYTHON if exist "%TBH_PYTHON%" set "PYEXE=%TBH_PYTHON%"
-if not defined PYEXE for /f "delims=" %%i in ('py -3 -c "import sys;print(sys.executable)" 2^>nul') do set "PYEXE=%%i"
-if not defined PYEXE for %%D in (
-  "%LOCALAPPDATA%\Programs\Python\Python313"
-  "%LOCALAPPDATA%\Programs\Python\Python312"
-  "%LOCALAPPDATA%\Programs\Python\Python311"
-  "%LOCALAPPDATA%\Programs\Python\Python310"
-  "C:\Program Files\Python313"
-  "C:\Program Files\Python312"
-  "C:\Program Files\Python311"
-  "C:\Python313"
-  "C:\Python312"
-  "C:\Python311"
-  "C:\Python310"
-) do if not defined PYEXE if exist "%%~D\python.exe" set "PYEXE=%%~D\python.exe"
-if not defined PYEXE for /f "delims=" %%i in ('where python.exe 2^>nul') do if not defined PYEXE set "PYEXE=%%i"
+set "PYEXE="
+call :try "%TBH_PYTHON%"
+for /f "delims=" %%i in ('py -3 -c "import sys;print(sys.executable)" 2^>nul') do call :try "%%i"
+call :try "%LOCALAPPDATA%\Programs\Python\Python313\python.exe"
+call :try "%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
+call :try "%LOCALAPPDATA%\Programs\Python\Python311\python.exe"
+call :try "%LOCALAPPDATA%\Programs\Python\Python310\python.exe"
+call :try "%ProgramFiles%\Python313\python.exe"
+call :try "%ProgramFiles%\Python312\python.exe"
+call :try "%ProgramFiles%\Python311\python.exe"
+call :try "C:\Python313\python.exe"
+call :try "C:\Python312\python.exe"
+call :try "C:\Python311\python.exe"
+call :try "C:\Python310\python.exe"
+for /f "delims=" %%i in ('where python.exe 2^>nul') do call :try "%%i"
 
 if not defined PYEXE goto nopython
 
@@ -32,7 +31,8 @@ set "RC=%ERRORLEVEL%"
 if "%RC%"=="0" goto done
 echo.
 echo  Setup failed (exit %RC%). Details are in setup_log.txt.
-echo  An error dialog should have appeared as well.
+if "%RC%"=="9009" echo  Python at "%PYEXE%" could not be started - install Python 3.10+ from python.org.
+if "%RC%"=="2" echo  An error dialog should have appeared as well.
 echo.
 if not defined TBH_NO_PAUSE pause
 endlocal
@@ -44,10 +44,22 @@ exit /b 0
 
 :nopython
 echo.
-echo  Python 3.10+ was not found.
+echo  Python 3.10+ was not found (Windows Store python.exe aliases are ignored).
 echo  Install Python from https://www.python.org/downloads/windows/
 echo  (check "Add python.exe to PATH" during install), then double-click setup.bat again.
+echo  Set TBH_PYTHON to your python.exe path if it lives somewhere unusual.
 echo.
+>> "setup_log.txt" echo [%DATE% %TIME%] no usable Python found (WindowsApps alias or wrong path skipped)
 if not defined TBH_NO_PAUSE pause
 endlocal
 exit /b 3
+
+:try
+rem skip empty paths, Windows Store alias stubs and anything that cannot actually run
+if defined PYEXE goto :eof
+if "%~1"=="" goto :eof
+echo %~1| findstr /i "\WindowsApps\" >nul && goto :eof
+if not exist "%~1" goto :eof
+"%~1" -c "import sys" >nul 2>nul || goto :eof
+set "PYEXE=%~1"
+goto :eof

@@ -1,5 +1,10 @@
 # 更新日志
 
+## v1.0.8 — 2026-11-26
+
+- 修 `setup.bat` 的 `exit 9009`：以前只检查「文件是否存在」就认了这个 Python，Windows Store 的 `python.exe` 占位别名（以及 `TBH_PYTHON` 指错、Python 被卸载留下残路径）会让整条命令直接「找不到命令」，脚本根本没跑起来，`setup_log.txt` 里自然什么都没有。现在每个候选都要真跑一次 `python -c "import sys"` 才算数，`\WindowsApps\` 一律跳过，`TBH_PYTHON` 无效时自动继续往下找。
+- `setup.bat` 的失败提示按退出码区分：`9009` 说明「找到的 python 起不来」，`2` 才是「python 跑了但准备失败、已弹窗」；全都找不到时把原因追加进 `setup_log.txt`。
+- README 排错补上 `exit 9009` 的成因与解法。
 ## v1.0.7 — 2026-11-26
 
 - 新增 `setup.bat` 一键准备：双击即可完成「找 Python → 装 `requirements.txt` 依赖 → 找游戏安装目录 → 提取 `ui/` → 生成数据表 → 提取 `icons/` → 自检」，最后弹窗报告结果。

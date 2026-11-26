@@ -2,7 +2,7 @@
 
 给《TaskBar Hero》（Steam appid 3678970）按原版 UI 复刻的仓库/背包查看器：脱离游戏窗口单独打开，能看全部页签的物品，并显示**人民币**最低价与近 24 小时成交中位价。
 
-**版本：v1.0.7**
+**版本：v1.0.8**
 
 ![界面截图](docs/screenshot.png)
 
@@ -28,7 +28,7 @@
 
 - 全过程写进仓库根目录的 `setup_log.txt`（每次运行覆盖），失败会弹窗，里面带日志路径；
 - 游戏不在默认的 Steam 库也没关系，会自动扫 `libraryfolders.vdf` 与常见盘符，也可以手动指定：`setup.bat "D:\SteamLibrary\steamapps\common\TaskbarHero\TaskBarHero_Data"`；
-- 找不到 Python 时窗口会停住并提示去下载官方安装包（勾选 Add to PATH）。
+- 找不到 Python 时窗口会停住并提示去下载官方安装包（勾选 Add to PATH）；Windows Store 那个 `python.exe` 占位别名会被跳过（它不是真的 Python，跑起来只会得到 `exit 9009`）。
 
 ## 素材准备（重要）
 
@@ -60,7 +60,8 @@ start.bat
 1. 先跑 `start_debug.bat` —— 带控制台启动，异常会直接打印出来；素材没准备好就直接双击 `setup.bat`，它会把依赖和素材问题一次说清；
 2. 或者看 `setup_log.txt`（准备素材的日志）与 `launch_log.txt` —— 启动失败时会把完整 traceback 写进去，同时弹出提示框（`pythonw` 没有控制台，以前是静默退出）；
 3. 依赖没装全时 `start.bat` 会先告诉你缺什么：`python -m pip install -r requirements.txt`（`tkinter` 由官方 Python 安装包自带，别用精简/嵌入版）；
-4. 确认素材齐全：`ui\`、`items_zh.csv`、`localization_zh.json`（`icons\` 可选）。
+4. 确认素材齐全：`ui\`、`items_zh.csv`、`localization_zh.json`（`icons\` 可选）；
+5. `setup.bat` 报 `exit 9009` 表示它找到的 `python.exe` 根本起不来（最常见是 Windows Store 的占位别名，或 `TBH_PYTHON` 指错）——装官方 Python 3.10+，或用 `set TBH_PYTHON=C:\...\python.exe` 指定真身。
 
 等价于：
 
