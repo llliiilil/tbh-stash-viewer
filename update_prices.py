@@ -34,7 +34,20 @@ import httpx
 
 APPID = 3678970
 BASE = os.path.dirname(os.path.abspath(__file__))
-PROXY = "http://127.0.0.1:7890"
+def _auto_proxy():
+    """默认走本机 7890（Clash 之类）；没开代理端口就直连，别让新机器上所有请求都超时。
+    STEAM_PROXY 显式设置时以它为准，设成空串表示强制直连。"""
+    if "STEAM_PROXY" in os.environ:
+        return os.environ["STEAM_PROXY"] or None
+    import socket
+    try:
+        with socket.create_connection(("127.0.0.1", 7890), timeout=0.3):
+            return "http://127.0.0.1:7890"
+    except Exception:
+        return None
+
+
+PROXY = _auto_proxy()
 OUT_PATH = os.path.join(BASE, "item_prices.json")
 FAST_INTERVAL = 2 * 3600      # 仓库/背包的人民币价：每 2 小时一轮
 PAGE_SLEEP = 2                # 市场页之间的间隔
@@ -608,6 +621,8 @@ def sync_new_items(owned, new_keys=None, log=print, limit=5, backlog=1):
     if added:
         save_prices(prices, state.get("market_total", 0), state.get("unknown_count", 0), "fast")
         log(f"  [names] 新物品补了 {added} 件市场名，本轮一并取价")
+    elif picks:
+        log(f"  [names] {len(picks)} 件没解析出市场名（搜索页无匹配/网络问题，稍后自动重试）")
     return added
 
 
@@ -671,7 +686,8 @@ def _overview_refresh(priority=None, log=print, only_priority=False, on_save=Non
     LAST_RUN.update(result="running", updated=0)
     stopped = lambda: stop is not None and stop.is_set()
     log(f"  人民币刷新开始：{total} 件"
-        + ("（仅仓库/背包物品）" if only_priority else "（仓库/背包物品优先）"))
+        + ("（仅仓库/背包物品）" if only_priority else "（仓库/背包物品优先）")
+        + ("" if total or not only_priority else " · 没有待刷新的：都在 105 分钟内，或市场名还没解析出来"))
 
     def finish(res):
         LAST_RUN.update(result=res, updated=updated)

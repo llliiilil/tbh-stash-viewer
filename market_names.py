@@ -254,8 +254,11 @@ def known_hash(item_key):
     return _load_cache()["names"].get(str(item_key))
 
 
-def resolve_one(item_key, log=print):
-    """单件解析：返回市场 hash_name 或 None（成功/失败都会写缓存）。"""
+def resolve_one(item_key, log=print, use_cookies=True):
+    """单件解析：返回市场 hash_name 或 None（成功/失败都会写缓存）。
+
+    市场搜索页匿名可读（curl UA 200），登录态只是「有就带上、更稳」，没有也能解析；
+    以前这里一发现没登录就直接返回 None，新机器上就永远补不出市场名。"""
     import update_prices as up                     # 延迟导入，避免循环依赖
     c = _load_cache()
     rows = item_rows()
@@ -271,10 +274,14 @@ def resolve_one(item_key, log=print):
     if not en:
         c["tried"][str(item_key)] = time.time()
         _save_cache()
+        log(f"  [names] {item_key} 没有英文名（本地化表里缺 NameKey）")
         return None
-    ck = up.get_auth(log).cookies()
-    if not ck:
-        return None
+    ck = None
+    if use_cookies:
+        try:
+            ck = up.get_auth(log).cookies() or None
+        except Exception:
+            ck = None
     proxy = os.environ.get("STEAM_PROXY", up.PROXY)
     try:
         import httpx
@@ -284,7 +291,8 @@ def resolve_one(item_key, log=print):
             resp = cl.get(up.MARKET_SEARCH_URL,
                           params={"appid": up.APPID, "q": en, "count": up.MARKET_PAGE_SIZE, "start": 0})
     except Exception as e:
-        log(f"  [names] {en} 搜索失败（{type(e).__name__}）")
+        hint = "" if proxy else "（当前直连，连不上就设 STEAM_PROXY 或开 127.0.0.1:7890 代理）"
+        log(f"  [names] {en} 搜索失败（{type(e).__name__}）{hint}")
         # 网络失败不占 3 天节流：记成「1 小时后可重试」，免得同一件每轮都等满 40 秒超时
         c["tried"][str(item_key)] = time.time() - RETRY_SECONDS + 3600
         _save_cache()
@@ -292,6 +300,7 @@ def resolve_one(item_key, log=print):
     c["tried"][str(item_key)] = time.time()
     if resp.status_code != 200:
         _save_cache()
+        log(f"  [names] {item_key} 搜索页返回 {resp.status_code}")
         return None
     _, items = up.parse_market_page(resp.text)
     want_base = norm(en)
@@ -308,6 +317,8 @@ def resolve_one(item_key, log=print):
     if hits:
         c["names"][str(item_key)] = hits[0]
         log(f"  [names] {item_key} → {hits[0]}")
+    else:
+        log(f"  [names] {item_key} 未匹配（{en} / {want_grade or '?'}）")
     _save_cache()
     return hits[0] if hits else None
 

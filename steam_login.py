@@ -26,7 +26,19 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 PROFILE_DIR = os.path.join(BASE, "edge_login_profile")      # 这个窗口专用的浏览器配置目录
 COOKIES_PATH = os.path.join(BASE, "steam_cookies.json")
 LOG_PATH = os.path.join(BASE, "steam_login.log")
-PROXY = "http://127.0.0.1:7890"                              # 与 update_prices.PROXY 一致
+def _default_proxy():
+    """STEAM_PROXY 优先；没设置时看本机 7890 有没有在监听，没开就不走代理。"""
+    if "STEAM_PROXY" in os.environ:
+        return os.environ["STEAM_PROXY"] or None
+    import socket
+    try:
+        socket.create_connection(("127.0.0.1", 7890), timeout=0.3).close()
+        return "http://127.0.0.1:7890"
+    except Exception:
+        return None
+
+
+PROXY = _default_proxy()                                     # 与 update_prices.PROXY 一致
 LOGIN_URL = "https://steamcommunity.com/login/home/?goto=market%2F"
 EDGE_CANDIDATES = [
     r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
@@ -179,8 +191,10 @@ def launch(url):
     port = _free_port()
     args = [edge,
             f"--user-data-dir={PROFILE_DIR}",
-            f"--remote-debugging-port={port}",
-            f"--proxy-server={PROXY}",
+            f"--remote-debugging-port={port}"]
+    if PROXY:
+        args.append(f"--proxy-server={PROXY}")
+    args += [
             "--no-first-run", "--no-default-browser-check",
             "--disable-features=msEdgeSignIn,msImplicitSignin,msSeamlessWebToBrowserSignIn",
             "--window-size=600,800",

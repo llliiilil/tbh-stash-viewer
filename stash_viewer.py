@@ -26,7 +26,7 @@ from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
-__version__ = "1.0.9"
+__version__ = "1.0.10"
 
 SAVE = os.environ.get("TBH_SAVE") or os.path.expandvars(
     r"%USERPROFILE%\AppData\LocalLow\TesseractStudio\TaskbarHero\SaveFile_Live.es3")
@@ -41,7 +41,21 @@ GRADE_TO_BG = {"COMMON": "NORMAL", "UNCOMMON": "UNCOMMON", "RARE": "RARE",
                "IMMORTAL": "IMMORTAL", "BEYOND": "BEYOND", "CELESTIAL": "CELESTIAL",
                "COSMIC": "COSMIC"}
 STEAM_APPID = 3678970
-STEAM_PROXY = os.environ.get("STEAM_PROXY", "http://127.0.0.1:7890")
+
+
+def _default_proxy():
+    """STEAM_PROXY 优先；没设置时看本机 7890 有没有在监听，没开就直连（别把新机器拖成超时）。"""
+    if "STEAM_PROXY" in os.environ:
+        return os.environ["STEAM_PROXY"] or None
+    import socket
+    try:
+        socket.create_connection(("127.0.0.1", 7890), timeout=0.3).close()
+        return "http://127.0.0.1:7890"
+    except Exception:
+        return None
+
+
+STEAM_PROXY = _default_proxy()
 CNY_TTL = 300                 # 悬停拉取的人民币价缓存时长（与快刷节奏一致）
 GAME_EXE = "taskbarhero.exe"  # 游戏进程名：运行中时查看器自动置顶（联动启动场景）
 GAME_EXIT_GRACE = 2.0         # 游戏进程消失后宽限几秒再关查看器（容许游戏重启的空档）

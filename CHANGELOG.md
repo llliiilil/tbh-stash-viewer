@@ -1,5 +1,11 @@
 # 更新日志
 
+## v1.0.10 — 2026-11-26
+
+- 修「新物品解析完名字，价格却一件都不刷」：`market_names.resolve_one()` 以前只要没登录就直接返回 `None`，新机器上没有 `steam_cookies.json`，于是 5 件新物品全被跳过，接着刷新当然是 0 件。市场搜索页本来匿名可读（curl UA 200），现在登录态改成「有就带上、没有也能解析」。
+- 默认代理不再硬编码：`STEAM_PROXY` 优先，未设置时先探本机 `127.0.0.1:7890` 有没有在监听，没开就直连（以前没开代理会让每个请求都超时）；`steam_login.py` 同样只在有代理时才传 `--proxy-server`。
+- 解析失败的日志补齐：搜索失败（带「直连请设代理」提示）、搜索页非 200、搜索页里没匹配到、以及「n 件没解析出市场名，稍后自动重试」。
+- `人民币刷新开始：0 件` 现在会补一句原因（都在 105 分钟内，或市场名还没解析出来），不再让人以为卡住。
 ## v1.0.9 — 2026-11-26
 
 - 修新机器上的 `[names] 解析异常（FileNotFoundError: ...\csv\ItemInfoData.csv）`：查看器和 `market_names.py` 不再硬依赖 `csv/` 目录。`items_zh.csv` 新增「可交易」「描述键」两列（由 `build_item_tables.py` 从游戏资源生成），可交易标记与物品描述都从这里读；老 `items_zh.csv` 仍回落到 `csv/ItemInfoData.csv`，再不行直接从 `sharedassets0.assets` 里的 `ItemInfoData` 现读。
