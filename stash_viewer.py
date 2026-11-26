@@ -26,7 +26,7 @@ from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 
 SAVE = os.environ.get("TBH_SAVE") or os.path.expandvars(
     r"%USERPROFILE%\AppData\LocalLow\TesseractStudio\TaskbarHero\SaveFile_Live.es3")
@@ -1475,9 +1475,58 @@ class Viewer(tk.Tk):
             pass
 
 
+def _missing_assets():
+    """启动前检查素材：这些文件不随仓库分发，缺了会在合成界面时崩，pythonw 下什么也看不到。"""
+    need = [
+        os.path.join(UI, "Ui_Stash_Bg.png"),
+        os.path.join(UI, "Ui_Stash_Bg_Decor.png"),
+        os.path.join(UI, "TextImage_Stash_SC.png"),
+        os.path.join(UI, "TabButton_Stash_Active.png"),
+        os.path.join(UI, "TabButton_Stash_DeActive_Active.png"),
+        os.path.join(UI, "Btn_Large_Active.png"),
+        os.path.join(UI, "Btn_Large_Plain.png"),
+        os.path.join(UI, "Button_Close_Active.png"),
+        os.path.join(UI, "ItemSlot_Bg.png"),
+        os.path.join(UI, "ItemSlot_GradeBg_NORMAL.png"),
+        os.path.join(UI, "Btn_Small_Active.png"),
+        ITEMS,
+        os.path.join(BASE, "localization_zh.json"),
+    ]
+    missing = [os.path.relpath(p, BASE) for p in need if not os.path.exists(p)]
+    return missing
+
+
+def _startup_failure(err):
+    """pythonw 没有控制台：把栈写进 launch_log.txt，再弹一个框，别让用户只看到"没反应"。"""
+    import traceback
+    text = "".join(traceback.format_exception(type(err), err, err.__traceback__))
+    try:
+        with open(os.path.join(BASE, "launch_log.txt"), "a", encoding="utf-8") as f:
+            f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + "启动失败\n" + text + "\n")
+    except Exception:
+        pass
+    try:
+        ctypes.windll.user32.MessageBoxW(
+            0, f"{type(err).__name__}: {err}\n\n详细信息见 {os.path.join(BASE, 'launch_log.txt')}",
+            "TaskbarHero 仓库查看器 · 启动失败", 0x10)
+    except Exception:
+        pass
+
+
 if __name__ == "__main__":
     # 单实例保护：游戏启动联动会反复拉起本脚本，已运行时第二个实例静默退出
     _mtx = ctypes.windll.kernel32.CreateMutexW(None, False, "TaskbarHeroStashViewer")
     if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
         sys.exit(0)
-    Viewer().mainloop()
+    try:
+        miss = _missing_assets()
+        if miss:
+            raise RuntimeError(
+                "缺少游戏素材，无法启动：\n  " + "\n  ".join(miss) +
+                "\n\n这些文件不随仓库分发。从能用的机器上把 ui\\、icons\\、csv\\、"
+                "items_zh.csv、localization_zh.json 复制过来，"
+                "或用 tools\\extract_sprites.py 从本机游戏目录提取。")
+        Viewer().mainloop()
+    except Exception as e:              # 缺素材 / 缺依赖 / 存档解析异常都不该静默退出
+        _startup_failure(e)
+        sys.exit(1)

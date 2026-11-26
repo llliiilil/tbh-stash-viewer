@@ -2,7 +2,7 @@
 
 给《TaskBar Hero》（Steam appid 3678970）按原版 UI 复刻的仓库/背包查看器：脱离游戏窗口单独打开，能看全部页签的物品，并显示**人民币**最低价与近 24 小时成交中位价。
 
-**版本：v1.0.3**
+**版本：v1.0.4**
 
 ![界面截图](docs/screenshot.png)
 
@@ -37,13 +37,26 @@ python tools\extract_sprites.py --list --filter Button      :: 先看有哪些 S
 python tools\extract_sprites.py                             :: 提取默认按钮组到 .\ui
 ```
 
-`icons/` 与 `items_zh.csv` 需要从游戏资源与本地化表导出（字段对应：`csv/ItemInfoData.csv` 的图标名 → `icons/<名字>.png`，英文名/中文名来自本地化 bundle）。缺失时查看器仍能打开，只是格子没有图标、没有中文名。
+`icons/` 与 `items_zh.csv` 需要从游戏资源与本地化表导出（字段对应：`csv/ItemInfoData.csv` 的图标名 → `icons/<名字>.png`，英文名/中文名来自本地化 bundle）。
+
+启动必需：`ui/` 里的面板图、`items_zh.csv`、`localization_zh.json`——缺任何一项都会启动失败，程序会弹框列出缺的文件（不再静默退出）。`icons/` 是可选，缺了格子没有图标，其它照常。
+
+换新机器的省事做法：从已经跑通的机器上把 `ui\`、`icons\`、`csv\`、`items_zh.csv`、`localization_zh.json` 整个复制过来，比重新提取更快。
 
 ## 运行
 
 ```bat
 start.bat
 ```
+
+`start.bat` 会按这个顺序找 Python：`TBH_PYTHON` 环境变量 → `py -3` 启动器 → `%LOCALAPPDATA%\Programs\Python\Python31x` 等常见目录 → PATH 里的 `pythonw.exe`；找不到或用不了会停住并提示，不会闪一下就没。
+
+### 双击没反应怎么查
+
+1. 先跑 `start_debug.bat` —— 带控制台启动，异常会直接打印出来；
+2. 或者看程序目录下的 `launch_log.txt` —— 启动失败时会把完整 traceback 写进去，同时弹出提示框（`pythonw` 没有控制台，以前是静默退出）；
+3. 依赖没装全时 `start.bat` 会先告诉你缺什么：`python -m pip install -r requirements.txt`（`tkinter` 由官方 Python 安装包自带，别用精简/嵌入版）；
+4. 确认素材齐全：`ui\`、`icons\`、`csv\`、`items_zh.csv`、`localization_zh.json`。
 
 等价于：
 
