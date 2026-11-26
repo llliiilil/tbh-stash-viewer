@@ -26,7 +26,7 @@ from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
-__version__ = "1.0.13"
+__version__ = "1.0.14"
 
 SAVE = os.environ.get("TBH_SAVE") or os.path.expandvars(
     r"%USERPROFILE%\AppData\LocalLow\TesseractStudio\TaskbarHero\SaveFile_Live.es3")
@@ -338,11 +338,17 @@ class ItemTooltip(tk.Toplevel):
         self._lbl_ref = None
         self._lbl_now = None
         self._lbl_arrow = None
-        if price:
+        self._lbl_list = None
+        if price and price.get("hash"):
             self._hash = price.get("hash", "")
             tk.Label(box, text="Steam 市场价格（人民币）", bg="#14100f", fg="#f0e6d2",
                      font=("Microsoft YaHei UI", 10, "bold"), anchor="w").pack(
                 fill="x", pady=(8, 0))
+            if price.get("no_same_grade"):
+                tk.Label(box,
+                         text=f"本阶无挂单 · 以下是同款 {price.get('ref_grade') or '其它'} 品阶的挂单，仅作参考",
+                         bg="#14100f", fg="#c9a227",
+                         font=("Microsoft YaHei UI", 9), anchor="w").pack(fill="x")
             pr = tk.Frame(box, bg="#14100f")
             pr.pack(fill="x")
             cny = price.get("cny_cents")
@@ -360,9 +366,12 @@ class ItemTooltip(tk.Toplevel):
                 recv = steam_recv_cents(cny)                  # Steam 官方费用逆推（人民币）
                 self._lbl_recv.configure(text=f"  → 收入 {fmt_cny(recv)}")
             self._lbl_recv.pack(side="left")
-            tk.Label(pr, text=f"  挂牌 {price.get('listings', 0)} 件",
-                     bg="#14100f", fg="#8f8f8f",
-                     font=("Microsoft YaHei UI", 9), anchor="w").pack(side="left")
+            n_list = price.get("listings")
+            self._lbl_list = tk.Label(pr, text=(f"  挂牌 {n_list} 件" if isinstance(n_list, int)
+                                               else "  挂牌数未取"),
+                                      bg="#14100f", fg="#8f8f8f",
+                                      font=("Microsoft YaHei UI", 9), anchor="w")
+            self._lbl_list.pack(side="left")
             # 参考价（成交中位）：悬停时从 pricehistory 拉取，抗恶意压价
             pr2 = tk.Frame(box, bg="#14100f")
             pr2.pack(fill="x")
@@ -425,6 +434,11 @@ class ItemTooltip(tk.Toplevel):
         # 显示之后发生过层级变动，保证提示窗不被仓库面板压住
         self.attributes("-topmost", True)
         self.lift()
+
+    def set_listings(self, n):
+        """挂牌件数补齐后原位刷新。"""
+        if self._lbl_list is not None and isinstance(n, int):
+            self._lbl_list.configure(text=f"  挂牌 {n} 件")
 
     def set_cny(self, data):
         """人民币行情到达后原位刷新（窗口仍显示同一物品时才被调用）：
@@ -1117,7 +1131,7 @@ class Viewer(tk.Tk):
         total = len(owned)
         marketable = {k for k in owned if self.market.get(str(k), True)}
         untradable = total - len(marketable)
-        priced = nolist = nolist_untrad = pending = 0
+        priced = ref_price = nolist = nolist_untrad = pending = 0
         unnamed = []
         for k in owned:
             p = prices.get(str(k))
@@ -1126,7 +1140,10 @@ class Viewer(tk.Tk):
                     unnamed.append(str(k))
                 continue
             if isinstance(p.get("cny_cents"), int):
-                priced += 1
+                if p.get("no_same_grade"):
+                    ref_price += 1
+                else:
+                    priced += 1
             elif p.get("no_listing"):
                 nolist += 1
                 if p.get("untradable") or str(k) not in marketable:
@@ -1135,9 +1152,11 @@ class Viewer(tk.Tk):
                 nolist += 1
             else:
                 pending += 1
-        line = (f"冷启动补全：仓库/背包共 {total} 件 · 有价 {priced} 件"
-                f" · 无挂牌 {nolist + untradable - nolist_untrad} 件"
-                f" · 未解析 {len(unnamed)} 件")
+        line = (f"冷启动补全：仓库/背包共 {total} 件 · 本阶有价 {priced} 件")
+        if ref_price:
+            line += f" · 同款参考价 {ref_price} 件（本阶无挂单）"
+        line += (f" · 无挂牌 {nolist + untradable - nolist_untrad} 件"
+                 f" · 未解析 {len(unnamed)} 件")
         if untradable:
             line += f"（其中不可交易 {untradable} 件）"
         if pending:
@@ -1245,6 +1264,7 @@ class Viewer(tk.Tk):
         rec["_prices_updated"] = getattr(self, "prices_updated", "")
         self._tip_cell = i
         self._tip_key = str(rec.get("ItemKey", ""))
+        self._tip_rec = rec
         self._tipwin.rebuild(rec, self._cell_labels.get(i))
         # 先用价格表里的现成数据把「最低价 + 24h 成交中位」立刻填上（每 2 小时一轮维护），
         # 不必等悬停现拉；现拉只用于把这一件刷到最新。
@@ -1263,6 +1283,12 @@ class Viewer(tk.Tk):
             elif (time.time() >= self._cny_cooldown
                   and h not in self._cny_inflight):
                 threading.Thread(target=self._cny_fetch, args=(h,), daemon=True).start()
+        # 挂牌件数：解析市场名时顺手记过就秒显；老条目没有的，悬停时后台补一次（约 2~4 秒）
+        if h and not isinstance(p.get("listings"), int):
+            self._listings_fetch_async(k, h)
+        # 「无挂牌」的老条目：悬停时补一次解析，同款其它品阶有挂单就换成参考价
+        if p and not p.get("hash") and p.get("no_listing") and not p.get("untradable"):
+            self._ref_resolve_async(k)
 
     def _cny_fetch(self, h):
         """防重入包装：同一 hash 的拉取在飞时不再起线程（悬停反复进出/重建
@@ -1312,12 +1338,101 @@ class Viewer(tk.Tk):
         self._cny_cache[h] = (time.time(), out)
         self._cny_done[h] = out
 
+    def _ref_resolve_async(self, k):
+        """老「无挂牌」条目没有 hash：悬停时补一次解析，找同款其它品阶的挂单当参考价。"""
+        if not hasattr(self, "_ref_inflight"):
+            self._ref_inflight = set()
+            self._ref_done = set()
+        if k in self._ref_inflight:
+            return
+        self._ref_inflight.add(k)
+        threading.Thread(target=self._ref_resolve_run, args=(k,), daemon=True).start()
+
+    def _ref_resolve_run(self, k):
+        changed = False
+        try:
+            sys.path.insert(0, BASE)
+            import market_names as mn
+            import update_prices as up
+            mn.resolve_one(k, log=print)          # 强制重查一次，补 counts / refs
+            ref = mn.ref_of(k)
+            p = self.prices.get(k)
+            if ref and p is not None:
+                p.update({"hash": ref["hash"], "no_same_grade": True,
+                          "ref_grade": ref.get("grade"), "cny_cents": None})
+                p.pop("no_listing", None)
+                cnt = mn.listing_count(ref["hash"])
+                if cnt is not None:
+                    p["listings"] = cnt
+                res = up.cny_overview(ref["hash"])     # 顺手把这件的参考价拉回来
+                if res and res != "cooldown":
+                    p.update({kk: vv for kk, vv in res.items() if vv is not None})
+                changed = True
+        except Exception as e:
+            print(f"[ref] {k}: {type(e).__name__}: {e}", flush=True)
+        finally:
+            self._ref_inflight.discard(k)
+        if changed:
+            self._ref_done.add(k)
+
+    def _listings_fetch_async(self, k, h):
+        """挂牌件数未知时悬停补一次：市场搜索页里同一 hash 的 cSellOrders（约 2~4 秒）。"""
+        if not hasattr(self, "_listings_inflight"):
+            self._listings_inflight = set()
+            self._listings_done = {}
+        if k in self._listings_inflight:
+            return
+        self._listings_inflight.add(k)
+        threading.Thread(target=self._listings_fetch_run, args=(k, h), daemon=True).start()
+
+    def _listings_fetch_run(self, k, h):
+        n = None
+        try:
+            sys.path.insert(0, BASE)
+            import market_names as mn
+            import update_prices as up
+            en = mn.en_names().get((self.items.get(k) or {}).get("NameKey"))
+            if en:
+                import httpx
+                with httpx.Client(timeout=40, proxy=up.PROXY or None,
+                                  headers=up.MARKET_HEADERS) as cl:
+                    r = cl.get(up.MARKET_SEARCH_URL,
+                               params={"appid": up.APPID, "q": en,
+                                       "count": up.MARKET_PAGE_SIZE, "start": 0})
+                if r.status_code == 200:
+                    _, rows = up.parse_market_page(r.text)
+                    for x in rows or []:
+                        if x["hash"] == h:
+                            n = x["listings"]
+                            break
+        except Exception as e:
+            print(f"[listings] {k}: {type(e).__name__}: {e}", flush=True)
+        finally:
+            self._listings_inflight.discard(k)
+        if n is None:
+            return
+        p = self.prices.get(k)
+        if p is not None and p.get("hash") == h:
+            p["listings"] = n
+        self._listings_done[k] = n
+
     def _cny_drain(self):
         """主线程轮询：消费拉取线程写入的 CNY 结果并刷新当前悬停窗。"""
         if self._cny_done:
             for h in list(self._cny_done):
                 d = self._cny_done.pop(h)
                 self._apply_cny(h, d)
+        for k, n in list(getattr(self, "_listings_done", {}).items()):
+            self._listings_done.pop(k, None)
+            tw = getattr(self, "_tipwin", None)
+            if tw and getattr(self, "_tip_key", None) == k:
+                tw.set_listings(n)
+        for k in list(getattr(self, "_ref_done", set())):
+            self._ref_done.discard(k)
+            if getattr(self, "_tip_key", None) == k and getattr(self, "_tip_rec", None):
+                rec = dict(self._tip_rec)
+                rec["_price"] = self.prices.get(k)
+                self._spawn_tip_at(self._tip_cell, rec)     # 参考价回来了，整窗重建一次
         self.after(150, self._cny_drain)
 
     def _apply_cny(self, h, d):

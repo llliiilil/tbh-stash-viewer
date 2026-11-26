@@ -241,6 +241,8 @@ def _load_cache():
     _CACHE.setdefault("names", {})
     _CACHE.setdefault("tried", {})
     _CACHE.setdefault("notlisted", {})   # 搜索页查过了，但同名同品阶没有挂单
+    _CACHE.setdefault("refs", {})        # 本阶没挂单时，同款其它品阶的参考挂单
+    _CACHE.setdefault("counts", {})      # hash -> [在售件数, 时间]
     return _CACHE
 
 
@@ -310,25 +312,68 @@ def resolve_one(item_key, log=print, use_cookies=True):
     want_base = norm(en)
     want_grade = r.get("GRADE")
     cands = []
+    others = []
+    counts = c.setdefault("counts", {})
     for x in items or []:
         base, grade = _split_hash(x["hash"])
         if base != want_base:
             continue
+        counts[x["hash"]] = [x.get("listings") or 0, time.time()]   # 顺手记在售件数，界面要显示「挂牌 N 件」
+        rec = (x["cents"] or 10 ** 9, x["hash"], grade)
         if want_grade and grade and grade != want_grade:
-            continue                        # 同名不同品阶：不是这件
-        cands.append((x["cents"] or 10 ** 9, x["hash"]))
-    hits = [h for _c, h in sorted(cands)]   # 同名多版本（A/B/C）时取最便宜的那个
+            others.append(rec)              # 同名不同品阶：本阶没有，但可以拿来当参考
+            continue
+        cands.append(rec)
+    hits = [h for _c, h, _g in sorted(cands)]   # 同名多版本（A/B/C）时取最便宜的那个
     if hits:
         c["names"][str(item_key)] = hits[0]
         c["notlisted"].pop(str(item_key), None)
+        c["refs"].pop(str(item_key), None)
         log(f"  [names] {item_key} → {hits[0]}")
     else:
-        # 搜索页确实查过、但同品阶没有挂单：记下来，界面上算「无挂牌」，别每轮再查一遍
+        # 搜索页确实查过、但同品阶没有挂单：记下来，界面上算「无挂牌」，别每轮再查一遍。
+        # 同名物品有挂单的话，顺手挑一个最接近的品阶当参考价（界面会标明是「同款 XX 参考」）
         c["notlisted"][str(item_key)] = time.time()
         c["names"].pop(str(item_key), None)
-        log(f"  [names] {item_key} 未匹配（{en} / {want_grade or '?'}）：市场无该品阶挂单")
+        if others:
+            best = _nearest_grade(want_grade, {g for _c, _h, g in others})
+            same = [rec for rec in others if rec[2] == best] or others
+            _cents, h, g = min(same)
+            c["refs"][str(item_key)] = {"hash": h, "grade": g}
+            log(f"  [names] {item_key} 本阶无挂单，参考同款 {g or '?'} → {h}")
+        else:
+            c["refs"].pop(str(item_key), None)
+            log(f"  [names] {item_key} 未匹配（{en} / {want_grade or '?'}）：市场没有同名挂单")
     _save_cache()
     return hits[0] if hits else None
+
+
+GRADE_ORDER = ["COMMON", "UNCOMMON", "RARE", "LEGENDARY", "ARCANA",
+               "IMMORTAL", "DIVINE", "BEYOND", "CELESTIAL", "COSMIC"]
+
+
+def _nearest_grade(want, grades):
+    """want 品阶离哪个已挂品阶最近（按品阶序列的距离）。"""
+    if not grades:
+        return None
+    if want not in GRADE_ORDER:
+        return sorted(grades, key=lambda g: GRADE_ORDER.index(g) if g in GRADE_ORDER else 99)[0]
+    wi = GRADE_ORDER.index(want)
+
+    def dist(g):
+        return abs(GRADE_ORDER.index(g) - wi) if g in GRADE_ORDER else 99
+    return sorted(grades, key=dist)[0]
+
+
+def ref_of(item_key):
+    """本阶没挂单时，同款其它品阶的参考挂单：{"hash", "grade"} 或 None。"""
+    return _load_cache().get("refs", {}).get(str(item_key))
+
+
+def listing_count(hash_name):
+    """上次搜到这件时看到的在售件数（未知返回 None）。"""
+    got = _load_cache().get("counts", {}).get(hash_name)
+    return got[0] if got else None
 
 
 def notlisted(item_key):
