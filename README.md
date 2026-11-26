@@ -2,7 +2,7 @@
 
 给《TaskBar Hero》（Steam appid 3678970）按原版 UI 复刻的仓库/背包查看器：脱离游戏窗口单独打开，能看全部页签的物品，并显示**人民币**最低价与近 24 小时成交中位价。
 
-**版本：v1.0.6**
+**版本：v1.0.7**
 
 ![界面截图](docs/screenshot.png)
 
@@ -22,17 +22,20 @@
 - 本机装有《TaskBar Hero》
 - （可选）代理：默认走 `http://127.0.0.1:7890`，可用环境变量 `STEAM_PROXY` 覆盖；不设代理也能直连，只是更早触发限流
 
-## 安装
+## 安装（一键）
 
-```bat
-pip install -r requirements.txt
-```
+**双击 `setup.bat` 就行**：它会自己找 Python 3.10+、装 `requirements.txt` 里的依赖、找到《TaskBar Hero》的安装目录、把 `ui/`、`icons/`、`items_zh.csv`、`localization_zh.json` 全部生成好，最后弹窗告诉你结果。第一次要几分钟，之后重跑只要十几秒。
+
+- 全过程写进仓库根目录的 `setup_log.txt`（每次运行覆盖），失败会弹窗，里面带日志路径；
+- 游戏不在默认的 Steam 库也没关系，会自动扫 `libraryfolders.vdf` 与常见盘符，也可以手动指定：`setup.bat "D:\SteamLibrary\steamapps\common\TaskbarHero\TaskBarHero_Data"`；
+- 找不到 Python 时窗口会停住并提示去下载官方安装包（勾选 Add to PATH）。
 
 ## 素材准备（重要）
 
-仓库**不附带游戏素材**：`ui/`、`icons/`、`items_zh.csv`、`localization_zh.json` 都从你自己机器上的游戏副本生成，版权归游戏方。三条命令即可（`--game-dir` 指向游戏的 `TaskBarHero_Data` 目录，省略时依次看 `TBH_GAME_DIR` 和常见 Steam 路径）：
+仓库**不附带游戏素材**：`ui/`、`icons/`、`items_zh.csv`、`localization_zh.json` 都从你自己机器上的游戏副本生成，版权归游戏方。`setup.bat` 做的就是下面三条命令，想手动跑、或者只想补其中一部分时才用到（`--game-dir` 指向游戏的 `TaskBarHero_Data` 目录，省略时依次看 `TBH_GAME_DIR` 和常见 Steam 路径）：
 
 ```bat
+python tools\setup_all.py   :: 一条命令跑完下面三步，并写 setup_log.txt、出错弹窗
 python tools\extract_sprites.py   --game-dir "D:\SteamLibrary\steamapps\common\TaskbarHero\TaskBarHero_Data"
 python tools\build_item_tables.py --game-dir "D:\SteamLibrary\steamapps\common\TaskbarHero\TaskBarHero_Data"
 python tools\extract_icons.py     --game-dir "D:\SteamLibrary\steamapps\common\TaskbarHero\TaskBarHero_Data"
@@ -54,8 +57,8 @@ start.bat
 
 ### 双击没反应怎么查
 
-1. 先跑 `start_debug.bat` —— 带控制台启动，异常会直接打印出来；
-2. 或者看程序目录下的 `launch_log.txt` —— 启动失败时会把完整 traceback 写进去，同时弹出提示框（`pythonw` 没有控制台，以前是静默退出）；
+1. 先跑 `start_debug.bat` —— 带控制台启动，异常会直接打印出来；素材没准备好就直接双击 `setup.bat`，它会把依赖和素材问题一次说清；
+2. 或者看 `setup_log.txt`（准备素材的日志）与 `launch_log.txt` —— 启动失败时会把完整 traceback 写进去，同时弹出提示框（`pythonw` 没有控制台，以前是静默退出）；
 3. 依赖没装全时 `start.bat` 会先告诉你缺什么：`python -m pip install -r requirements.txt`（`tkinter` 由官方 Python 安装包自带，别用精简/嵌入版）；
 4. 确认素材齐全：`ui\`、`items_zh.csv`、`localization_zh.json`（`icons\` 可选）。
 
@@ -107,9 +110,11 @@ steam_login.py         登录窗口 + CDP 抓 Cookie + 自动关窗（**可选**
 extract_steam_token.py 备用：从 Steam/Chrome/Edge 的 cookie 库读登录令牌
 start_with_game.vbs    Steam 联动启动（先开查看器，再转游戏命令）
 start.bat              手动启动
+setup.bat              **一键准备**：装依赖 + 找游戏目录 + 生成全部素材 + 弹窗报结果
 tools/extract_sprites.py   从游戏本体提取 ui/ 全套素材（含派生按钮）
 tools/build_item_tables.py 从游戏 bundle + 内置表生成 items_zh.csv 与 localization_zh.json
 tools/extract_icons.py    从游戏本体提取 icons/ 物品图标
+tools/setup_all.py         一键准备的执行体：依赖自检、找游戏目录、跑上面三个工具、写日志、弹窗
 ui/ icons/              游戏素材（.gitignore，用上面的 tools 自行生成）
 item_prices.json       价格表（本地缓存，含最低价 / 中位 / 成交量 / 时间戳）
 ```

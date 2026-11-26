@@ -1,5 +1,14 @@
 # 更新日志
 
+## v1.0.7 — 2026-11-26
+
+- 新增 `setup.bat` 一键准备：双击即可完成「找 Python → 装 `requirements.txt` 依赖 → 找游戏安装目录 → 提取 `ui/` → 生成数据表 → 提取 `icons/` → 自检」，最后弹窗报告结果。
+- 新增 `tools/setup_all.py`：一键准备的执行体。游戏目录优先认参数/`TBH_GAME_DIR`，其次扫各盘 Steam 库与 `libraryfolders.vdf`；依赖缺失自动 `pip install`，装不上再试 `--user`。
+- 日志落到仓库根目录 `setup_log.txt`（每次运行覆盖，已加入 `.gitignore`）；失败弹 `MessageBoxW` 并带上日志路径，成功弹窗给出素材数量（ui 32 张 / 图标 609 张 / 物品表 7031 行）。
+- 找不到 Python 时 `setup.bat` 停住并提示官方下载页，不闪退；`setup.bat` 带 `TBH_NO_PAUSE` 开关，方便脚本里跑。
+- 查看器启动失败弹框加一句「如果是缺素材/缺依赖，双击 setup.bat 会自动补齐」。
+- README 安装章节改为「双击 setup.bat」，素材章节保留三条手动命令作为进阶用法。
+
 ## v1.0.6 — 2026-11-26
 
 - 新增 `tools/extract_icons.py`：按 `IconPath` 从 `sharedassets0.assets` 取出全部 609 张 16×16 物品图标写进 `icons/`，格子图标不再是「缺了就空着」。

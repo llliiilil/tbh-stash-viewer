@@ -26,7 +26,7 @@ from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
-__version__ = "1.0.6"
+__version__ = "1.0.7"
 
 SAVE = os.environ.get("TBH_SAVE") or os.path.expandvars(
     r"%USERPROFILE%\AppData\LocalLow\TesseractStudio\TaskbarHero\SaveFile_Live.es3")
@@ -1507,7 +1507,9 @@ def _startup_failure(err):
         pass
     try:
         ctypes.windll.user32.MessageBoxW(
-            0, f"{type(err).__name__}: {err}\n\n详细信息见 {os.path.join(BASE, 'launch_log.txt')}",
+            0, f"{type(err).__name__}: {err}\n\n"
+               f"如果是缺素材/缺依赖，双击 setup.bat 会自动补齐。\n"
+               f"详细信息见 {os.path.join(BASE, 'launch_log.txt')}",
             "TaskbarHero 仓库查看器 · 启动失败", 0x10)
     except Exception:
         pass

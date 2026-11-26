@@ -13,6 +13,7 @@ prices_log.txt
 fg_debug.log
 launch_log.txt
 viewer_run.log
+setup_log.txt
 
 # ---------- 游戏素材与派生数据（版权属游戏方，不入库） ----------
 ui/
