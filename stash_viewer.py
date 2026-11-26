@@ -26,7 +26,7 @@ from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
-__version__ = "1.0.10"
+__version__ = "1.0.11"
 
 SAVE = os.environ.get("TBH_SAVE") or os.path.expandvars(
     r"%USERPROFILE%\AppData\LocalLow\TesseractStudio\TaskbarHero\SaveFile_Live.es3")
@@ -1095,6 +1095,16 @@ class Viewer(tk.Tk):
             pass
         return keys
 
+    def _missing_price_keys(self, owned=None):
+        """owned 里还没有价格表条目的 ItemKey（没有市场名就取不了价，冷启动时这批会很多）。"""
+        owned = self._owned_keys() if owned is None else owned
+        try:
+            import update_prices as up
+            prices = up.load_state().get("prices", {})
+        except Exception:
+            return set()
+        return {k for k in owned if str(k) not in prices}
+
     def _price_loop(self):
         """价格维护调度（常开）：
           只维护仓库/背包/材料库里的物品，每 2 小时一轮。
@@ -1129,15 +1139,21 @@ class Viewer(tk.Tk):
                     else:
                         self._owned_empty_logged = False
                         if self._mkt_lock.acquire(blocking=False):
+                            cold = False
                             try:
                                 self._set_status("更新中 0%", anim=True, pct=0)
-                                # 只有本次新出现的 ItemKey 才解析市场名（最多 5 件）；
-                                # 以前就缺条目的历史积压每轮最多补 1 件，别把一轮拖长
+                                # 冷启动/大缺口：价格表里没有条目的物品还很多时，一批多解析几件，
+                                # 并且这一轮结束后 12 秒就接着做下一批（只补条目，不重复刷已有价）。
+                                # 平时增量只解析「本次新出现的 ItemKey」（最多 5 件），历史积压每轮 1 件。
+                                missing_before = self._missing_price_keys(owned)
+                                cold = len(missing_before) >= 8
                                 seen = getattr(self, "_owned_seen", set())
                                 new_keys = owned - seen
                                 try:
                                     up.sync_new_items(owned, new_keys=new_keys,
-                                                      log=lambda m: self._price_log(m))
+                                                      log=lambda m: self._price_log(m),
+                                                      limit=40 if cold else 5,
+                                                      backlog=20 if cold else 1)
                                 except Exception as e:
                                     self._price_log(f"[names] {type(e).__name__}: {e}")
                                 self._owned_seen = set(owned)
@@ -1157,6 +1173,10 @@ class Viewer(tk.Tk):
                                 if up.overview_in_cooldown():
                                     # 本轮被限流打断：冷却一过就重试，不等满间隔（冷却时长逐级递增）
                                     last_fast -= up.FAST_INTERVAL - up.overview_cooldown_left() - 30
+                                elif cold and not self._stop_evt.is_set() \
+                                        and len(self._missing_price_keys(owned)) >= 8:
+                                    # 冷启动还没补完：12 秒后接着下一批，别等 2 小时
+                                    last_fast = time.time() - up.FAST_INTERVAL + 12
                                 self._mkt_anim = False
                                 self._mkt_lock.release()
                                 self._mkt_dirty = True
