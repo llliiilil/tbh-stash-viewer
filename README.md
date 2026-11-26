@@ -2,7 +2,7 @@
 
 给《TaskBar Hero》（Steam appid 3678970）按原版 UI 复刻的仓库/背包查看器：脱离游戏窗口单独打开，能看全部页签的物品，并显示**人民币**最低价与近 24 小时成交中位价。
 
-**版本：v1.0.4**
+**版本：v1.0.5**
 
 ![界面截图](docs/screenshot.png)
 
@@ -30,18 +30,19 @@ pip install -r requirements.txt
 
 ## 素材准备（重要）
 
-仓库**不附带游戏素材**：`ui/`（面板、按钮、页签图）、`icons/`（物品图标）、`csv/` 与 `items_zh.csv`（物品表/中文名）、`localization_zh.json` 都是从游戏本体提取或派生的，版权归游戏方，请用你自己机器上的游戏副本生成：
+仓库**不附带游戏素材**：`ui/`、`items_zh.csv`、`localization_zh.json` 都从你自己机器上的游戏副本生成，版权归游戏方。两条命令即可（`--game-dir` 指向游戏的 `TaskBarHero_Data` 目录，省略时依次看 `TBH_GAME_DIR` 和常见 Steam 路径）：
 
 ```bat
-python tools\extract_sprites.py --list --filter Button      :: 先看有哪些 Sprite
-python tools\extract_sprites.py                             :: 提取默认按钮组到 .\ui
+python tools\extract_sprites.py   --game-dir "D:\SteamLibrary\steamapps\common\TaskbarHero\TaskBarHero_Data"
+python tools\build_item_tables.py --game-dir "D:\SteamLibrary\steamapps\common\TaskbarHero\TaskBarHero_Data"
 ```
 
-`icons/` 与 `items_zh.csv` 需要从游戏资源与本地化表导出（字段对应：`csv/ItemInfoData.csv` 的图标名 → `icons/<名字>.png`，英文名/中文名来自本地化 bundle）。
+- `extract_sprites.py` 一次性写出 `ui/` 全套：仓库面板与装饰、标题图、普通/DLC 页签、格子底与十个品阶底、按钮组。棕色 `Btn_Large_Active` 和深灰 `Btn_Large_Plain` 游戏里没有现成 Sprite，是从灰色 `Button_Large_DeActive` 按原版配色派生的；同名多档的 Sprite（关闭按钮 12/28/32）会自动取与旧版素材一致的那一档。
+- `build_item_tables.py` 从本地化 bundle 拼出 `localization_zh.json`（`ItemTable` 1504 条 + `StringTable` 1775 条），从 `csv/ItemInfoData.csv`、`MaterialInfoData.csv`、`GearInfoData.csv` 拼出 `items_zh.csv`（7031 行）。
 
-启动必需：`ui/` 里的面板图、`items_zh.csv`、`localization_zh.json`——缺任何一项都会启动失败，程序会弹框列出缺的文件（不再静默退出）。`icons/` 是可选，缺了格子没有图标，其它照常。
+`icons/` 目前还没有提取脚本：没有也能正常启动，只是格子不显示物品图标；要图标可从已经跑通的机器把 `icons\` 复制过来。
 
-换新机器的省事做法：从已经跑通的机器上把 `ui\`、`icons\`、`csv\`、`items_zh.csv`、`localization_zh.json` 整个复制过来，比重新提取更快。
+启动必需：`ui/` 里的面板图、`items_zh.csv`、`localization_zh.json`——缺任何一项都会启动失败，程序会弹框列出缺的文件（不再静默退出）。
 
 ## 运行
 
@@ -56,7 +57,7 @@ start.bat
 1. 先跑 `start_debug.bat` —— 带控制台启动，异常会直接打印出来；
 2. 或者看程序目录下的 `launch_log.txt` —— 启动失败时会把完整 traceback 写进去，同时弹出提示框（`pythonw` 没有控制台，以前是静默退出）；
 3. 依赖没装全时 `start.bat` 会先告诉你缺什么：`python -m pip install -r requirements.txt`（`tkinter` 由官方 Python 安装包自带，别用精简/嵌入版）；
-4. 确认素材齐全：`ui\`、`icons\`、`csv\`、`items_zh.csv`、`localization_zh.json`。
+4. 确认素材齐全：`ui\`、`items_zh.csv`、`localization_zh.json`（`icons\` 可选）。
 
 等价于：
 
@@ -106,8 +107,9 @@ steam_login.py         登录窗口 + CDP 抓 Cookie + 自动关窗（**可选**
 extract_steam_token.py 备用：从 Steam/Chrome/Edge 的 cookie 库读登录令牌
 start_with_game.vbs    Steam 联动启动（先开查看器，再转游戏命令）
 start.bat              手动启动
-tools/extract_sprites.py  从游戏本体提取 UI Sprite
-ui/ icons/ csv/        游戏素材与派生数据（.gitignore，需自行提取）
+tools/extract_sprites.py  从游戏本体提取 ui/ 全套素材（含派生按钮）
+tools/build_item_tables.py 从游戏 bundle + csv/ 生成 items_zh.csv 与 localization_zh.json
+ui/ icons/ csv/        游戏素材与派生数据（.gitignore，需用 tools/ 自行生成）
 item_prices.json       价格表（本地缓存，含最低价 / 中位 / 成交量 / 时间戳）
 ```
 
@@ -139,7 +141,7 @@ item_prices.json       价格表（本地缓存，含最低价 / 中位 / 成交
 
 ## 路线图
 
-- v1.1：一键素材提取（`ui` + `icons` + `items_zh.csv` 全自动），首次运行配置向导。
+- v1.1：`icons/` 图标自动提取（`ui/` 与数据表已在 v1.0.5 自动化），首次运行配置向导。
 - v1.2：中位改用官方逐笔口径；价格历史本地化，支持折线小图。
 - 之后：多语言、非 Windows 平台的取价后端。
 

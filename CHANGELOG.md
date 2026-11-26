@@ -1,5 +1,14 @@
 # 更新日志
 
+## v1.0.5 — 2026-11-26
+
+- 新机器不必再从旧机器抄素材：`tools/extract_sprites.py` 默认清单从 7 个按钮扩展到 `ui/` 全套 30 个 Sprite（面板、装饰、标题、普通/DLC 页签、格子底、十个品阶底、按钮组），一条命令写满。
+- 棕色 `/` 深灰大按钮不再是「缺图」：`Btn_Large_Active`、`Btn_Large_Plain` 由灰色 `Button_Large_DeActive` 按原版锚点配色派生（只改纯灰像素，亮度 ≥ 95 的亮线压成暗色）。
+- 同名多档 Sprite 不再随机落盘：关闭按钮 12/28/32 三档按旧版素材尺寸取（`Active` 28、`Hover` 32），其余同名取面积最大。
+- 新增 `tools/build_item_tables.py`：从本地化 bundle（`ItemTable_zh-Hans` / `StringTable_zh-Hans` + 共享键名表）与 `csv/ItemInfoData.csv`、`MaterialInfoData.csv`、`GearInfoData.csv` 生成 `localization_zh.json`（1504 + 1775 条）与 `items_zh.csv`（7031 行）。
+- 校验：两套工具在本机游戏副本上重新生成，与原有 `ui/`（32 张全部逐像素相同）、`localization_zh.json`（键值 0 差异）、`items_zh.csv`（7031 行全等）完全一致。
+- README 素材章节改为「两条命令从游戏本体生成」，并注明 `icons/` 仍为可选项。
+
 ## v1.0.4 — 2026-11-26
 
 - 修「新机器上双击没反应」：以前 `pythonw` 没有控制台，缺素材/缺依赖时异常直接被吞掉，看起来就是拉不起来。现在启动前检查必需素材，异常会弹框说明原因，同时把完整 traceback 追加到 `launch_log.txt`。
