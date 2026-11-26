@@ -299,6 +299,9 @@ def resolve_one(item_key, log=print, use_cookies=True):
         return None
     c["tried"][str(item_key)] = time.time()
     if resp.status_code != 200:
+        if resp.status_code == 429 or resp.status_code >= 500:
+            # 限流/服务端错误不算「这件查不到」，1 小时后重试，别把 3 天节流用掉
+            c["tried"][str(item_key)] = time.time() - RETRY_SECONDS + 3600
         _save_cache()
         log(f"  [names] {item_key} 搜索页返回 {resp.status_code}")
         return None

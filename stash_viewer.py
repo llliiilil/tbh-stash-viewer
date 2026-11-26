@@ -26,7 +26,7 @@ from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
-__version__ = "1.0.11"
+__version__ = "1.0.12"
 
 SAVE = os.environ.get("TBH_SAVE") or os.path.expandvars(
     r"%USERPROFILE%\AppData\LocalLow\TesseractStudio\TaskbarHero\SaveFile_Live.es3")
@@ -1105,6 +1105,30 @@ class Viewer(tk.Tk):
             return set()
         return {k for k in owned if str(k) not in prices}
 
+    def _log_cold_summary(self, owned):
+        """冷启动跑完写一行总结：多少件、有价多少、无挂牌多少、没解析出市场名多少。"""
+        try:
+            import update_prices as up
+            prices = up.load_state().get("prices", {})
+        except Exception:
+            return
+        total = len(owned)
+        priced = nolist = pending = 0
+        for k in owned:
+            p = prices.get(str(k))
+            if not p:
+                continue
+            if isinstance(p.get("cny_cents"), int):
+                priced += 1
+            elif p.get("cny_ts"):
+                nolist += 1
+            else:
+                pending += 1
+        unnamed = total - priced - nolist - pending
+        self._price_log(f"冷启动补全：仓库/背包共 {total} 件 · 有价 {priced} 件"
+                        f" · 无挂牌 {nolist} 件 · 未解析 {unnamed} 件"
+                        + (f" · 未取价 {pending} 件（被限流打断，冷却后继续）" if pending else ""))
+
     def _price_loop(self):
         """价格维护调度（常开）：
           只维护仓库/背包/材料库里的物品，每 2 小时一轮。
@@ -1145,6 +1169,8 @@ class Viewer(tk.Tk):
                                 # 冷启动/大缺口：价格表里没有条目的物品还很多时，一批多解析几件，
                                 # 并且这一轮结束后 12 秒就接着做下一批（只补条目，不重复刷已有价）。
                                 # 平时增量只解析「本次新出现的 ItemKey」（最多 5 件），历史积压每轮 1 件。
+                                # 冷启动（价格表里缺条目的物品还很多）时一次全量解析，不再分批：
+                                # 用户要能一眼看出「整仓库都取完了」，而不是零零几次 5 件。
                                 missing_before = self._missing_price_keys(owned)
                                 cold = len(missing_before) >= 8
                                 seen = getattr(self, "_owned_seen", set())
@@ -1152,8 +1178,8 @@ class Viewer(tk.Tk):
                                 try:
                                     up.sync_new_items(owned, new_keys=new_keys,
                                                       log=lambda m: self._price_log(m),
-                                                      limit=40 if cold else 5,
-                                                      backlog=20 if cold else 1)
+                                                      limit=len(missing_before) if cold else 5,
+                                                      backlog=0 if cold else 1)
                                 except Exception as e:
                                     self._price_log(f"[names] {type(e).__name__}: {e}")
                                 self._owned_seen = set(owned)
@@ -1165,6 +1191,8 @@ class Viewer(tk.Tk):
                                     self._set_status("已暂停", fill="#8d8a85")
                                 else:
                                     self._set_status(*self._result_view(up))
+                                if cold:
+                                    self._log_cold_summary(owned)
                             except Exception as e:
                                 self._price_log(f"[prices] {type(e).__name__}: {e}")
                                 self._set_status("更新失败", fill="#ff8a80")
@@ -1173,10 +1201,6 @@ class Viewer(tk.Tk):
                                 if up.overview_in_cooldown():
                                     # 本轮被限流打断：冷却一过就重试，不等满间隔（冷却时长逐级递增）
                                     last_fast -= up.FAST_INTERVAL - up.overview_cooldown_left() - 30
-                                elif cold and not self._stop_evt.is_set() \
-                                        and len(self._missing_price_keys(owned)) >= 8:
-                                    # 冷启动还没补完：12 秒后接着下一批，别等 2 小时
-                                    last_fast = time.time() - up.FAST_INTERVAL + 12
                                 self._mkt_anim = False
                                 self._mkt_lock.release()
                                 self._mkt_dirty = True
