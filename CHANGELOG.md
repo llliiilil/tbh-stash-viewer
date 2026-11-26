@@ -1,5 +1,13 @@
 # 更新日志
 
+## v1.0.6 — 2026-11-26
+
+- 新增 `tools/extract_icons.py`：按 `IconPath` 从 `sharedassets0.assets` 取出全部 609 张 16×16 物品图标写进 `icons/`，格子图标不再是「缺了就空着」。
+- `tools/build_item_tables.py` 不再依赖仓库里的 `csv/`：物品表、材料表、装备表直接读 `sharedassets0.assets` 里同名的 csv TextAsset，新机器上没有 `csv/` 也能生成 `items_zh.csv`（7031 行，与旧文件 sha256 相同）。
+- `extract_icons.py` 的图标清单优先取 `items_zh.csv` 的「图标」列，没有就从游戏里的 `ItemInfoData` 现取，单独跑也能用。
+- 校验：重新提取的 609 张图标与原有 `icons/` 逐像素相同、文件名无多余；两张数据表语义与旧文件一致。
+- README 素材章节改为三条命令（`ui/`、数据表、`icons/` 全部本地生成），并注明 `icons/` 是软依赖。
+
 ## v1.0.5 — 2026-11-26
 
 - 新机器不必再从旧机器抄素材：`tools/extract_sprites.py` 默认清单从 7 个按钮扩展到 `ui/` 全套 30 个 Sprite（面板、装饰、标题、普通/DLC 页签、格子底、十个品阶底、按钮组），一条命令写满。

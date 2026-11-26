@@ -15,6 +15,7 @@
 import argparse
 import csv
 import glob
+import io
 import json
 import os
 import struct
@@ -87,9 +88,31 @@ def _rows(path):
         return list(csv.DictReader(f))
 
 
+def _text_assets(UnityPy, path):
+    """游戏把物品表/材料表这些 csv 以 TextAsset 存在 sharedassets0.assets 里。"""
+    if not os.path.exists(path):
+        return {}
+    env = UnityPy.load(path)
+    out = {}
+    for obj in env.objects:
+        if obj.type.name != "TextAsset":
+            continue
+        try:
+            d = obj.read(check_read=False)
+            out[getattr(d, "m_Name", "")] = d.m_Script.lstrip("\ufeff")
+        except Exception:
+            continue
+    return out
+
+
+def _rows_from_text(text):
+    return list(csv.DictReader(io.StringIO(text)))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--game-dir", default=DEFAULT_GAME_DIR)
+    ap.add_argument("--assets", default="sharedassets0.assets")
     ap.add_argument("--csv-dir", default=os.path.join(ROOT, "csv"))
     ap.add_argument("--out", default=ROOT)
     args = ap.parse_args()
@@ -126,11 +149,20 @@ def main():
         json.dump(loc, f, ensure_ascii=False)
     print(f"localization_zh.json：ItemTable {len(item_table)} 条，StringTable {len(string_table)} 条")
 
-    items = _rows(os.path.join(args.csv_dir, "ItemInfoData.csv"))
+    tables = _text_assets(UnityPy, os.path.join(args.game_dir, args.assets))
+    if tables:
+        print(f"从 {args.assets} 读到 {len(tables)} 张 TextAsset 表")
+
+    def table_rows(name):
+        if name in tables:
+            return _rows_from_text(tables[name])
+        return _rows(os.path.join(args.csv_dir, name + ".csv"))
+
+    items = table_rows("ItemInfoData")
     if not items:
-        sys.exit(f"找不到 ItemInfoData.csv：{args.csv_dir}")
-    materials = {r["ItemKey"]: r for r in _rows(os.path.join(args.csv_dir, "MaterialInfoData.csv"))}
-    gears = {r["GearKey"]: r for r in _rows(os.path.join(args.csv_dir, "GearInfoData.csv"))}
+        sys.exit(f"读不到 ItemInfoData：{args.assets} 里没有，{args.csv_dir} 下也没有")
+    materials = {r["ItemKey"]: r for r in table_rows("MaterialInfoData")}
+    gears = {r["GearKey"]: r for r in table_rows("GearInfoData")}
 
     def cn(k):
         return item_table.get(k) or k
