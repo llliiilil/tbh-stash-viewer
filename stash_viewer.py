@@ -26,7 +26,7 @@ from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
-__version__ = "1.0.12"
+__version__ = "1.0.13"
 
 SAVE = os.environ.get("TBH_SAVE") or os.path.expandvars(
     r"%USERPROFILE%\AppData\LocalLow\TesseractStudio\TaskbarHero\SaveFile_Live.es3")
@@ -516,12 +516,12 @@ class Viewer(tk.Tk):
         self.desc = {}
         sample = next(iter(self.items.values()), {})
         if "可交易" in sample:
-            self.market = {k: r.get("可交易") == "True" for k, r in self.items.items()}
+            self.market = {k: r.get("可交易") != "False" for k, r in self.items.items()}
             self.desc = {k: loc[r["描述键"]] for k, r in self.items.items()
                          if r.get("描述键") and r["描述键"] in loc}
         else:
             try:
-                self.market = {r["ItemKey"]: r.get("IsCanExchangeMarketable") == "True"
+                self.market = {r["ItemKey"]: r.get("IsCanExchangeMarketable") != "False"
                                for r in csv.DictReader(
                                    open(os.path.join(BASE, "csv", "ItemInfoData.csv"),
                                         encoding="utf-8-sig"))}
@@ -1096,8 +1096,10 @@ class Viewer(tk.Tk):
         return keys
 
     def _missing_price_keys(self, owned=None):
-        """owned 里还没有价格表条目的 ItemKey（没有市场名就取不了价，冷启动时这批会很多）。"""
+        """owned 里还没有价格表条目的 ItemKey（明确标注不可交易的排除在外）。"""
         owned = self._owned_keys() if owned is None else owned
+        if getattr(self, "_market_known", False):
+            owned = {k for k in owned if self.market.get(str(k), True)}
         try:
             import update_prices as up
             prices = up.load_state().get("prices", {})
@@ -1106,28 +1108,48 @@ class Viewer(tk.Tk):
         return {k for k in owned if str(k) not in prices}
 
     def _log_cold_summary(self, owned):
-        """冷启动跑完写一行总结：多少件、有价多少、无挂牌多少、没解析出市场名多少。"""
+        """冷启动跑完写一行总结：有价/无挂牌/未解析分开数，未解析的给出明细。"""
         try:
             import update_prices as up
             prices = up.load_state().get("prices", {})
         except Exception:
             return
         total = len(owned)
-        priced = nolist = pending = 0
+        marketable = {k for k in owned if self.market.get(str(k), True)}
+        untradable = total - len(marketable)
+        priced = nolist = nolist_untrad = pending = 0
+        unnamed = []
         for k in owned:
             p = prices.get(str(k))
             if not p:
+                if str(k) in marketable:
+                    unnamed.append(str(k))
                 continue
             if isinstance(p.get("cny_cents"), int):
                 priced += 1
+            elif p.get("no_listing"):
+                nolist += 1
+                if p.get("untradable") or str(k) not in marketable:
+                    nolist_untrad += 1
             elif p.get("cny_ts"):
                 nolist += 1
             else:
                 pending += 1
-        unnamed = total - priced - nolist - pending
-        self._price_log(f"冷启动补全：仓库/背包共 {total} 件 · 有价 {priced} 件"
-                        f" · 无挂牌 {nolist} 件 · 未解析 {unnamed} 件"
-                        + (f" · 未取价 {pending} 件（被限流打断，冷却后继续）" if pending else ""))
+        line = (f"冷启动补全：仓库/背包共 {total} 件 · 有价 {priced} 件"
+                f" · 无挂牌 {nolist + untradable - nolist_untrad} 件"
+                f" · 未解析 {len(unnamed)} 件")
+        if untradable:
+            line += f"（其中不可交易 {untradable} 件）"
+        if pending:
+            line += f" · 待取价 {pending} 件（被限流打断，冷却后继续）"
+        self._price_log(line)
+        if unnamed:
+            names = []
+            for k in unnamed[:12]:
+                row = self.items.get(k) or {}
+                names.append(f"{row.get('名称') or k}({k})")
+            self._price_log("  未解析明细：" + "、".join(names)
+                            + ("…" if len(unnamed) > 12 else ""))
 
     def _price_loop(self):
         """价格维护调度（常开）：

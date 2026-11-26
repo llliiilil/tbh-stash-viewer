@@ -615,15 +615,38 @@ def sync_new_items(owned, new_keys=None, log=print, limit=5, backlog=1):
         log(f"  [names] 解析异常（{type(e).__name__}: {e}）")
         return 0
     added = 0
+    nolist = 0
+    now = time.time()
+    try:
+        rows = market_names.item_rows()
+    except Exception:
+        rows = {}
     for k, h in got.items():
         prices.setdefault(k, {}).update({"hash": h, "cny_cents": None})
+        prices[k].pop("no_listing", None)
         added += 1
-    if added:
+    for k in picks:
+        if k in got:
+            continue
+        row = rows.get(k) or {}
+        if row.get("marketable") is False:
+            # 明确不可交易：本来就没有市场名，写一条「无挂牌」，从待解析队列里挪走
+            prices.setdefault(k, {}).update({"hash": None, "cny_ts": now,
+                                             "no_listing": True, "untradable": True})
+            nolist += 1
+        elif market_names.notlisted(k):
+            # 搜索页查过，市场没有这个品阶的挂单：也写一条「无挂牌」
+            prices.setdefault(k, {}).update({"hash": None, "cny_ts": now, "no_listing": True})
+            nolist += 1
+    if added or nolist:
         save_prices(prices, state.get("market_total", 0), state.get("unknown_count", 0), "fast")
+    if added:
         log(f"  [names] 新物品补了 {added} 件市场名，本轮一并取价")
-    elif picks:
-        log(f"  [names] {len(picks)} 件没解析出市场名（搜索页无匹配/网络问题，稍后自动重试）")
-    return added
+    if nolist:
+        log(f"  [names] {nolist} 件查过市场、没有该品阶挂单（记作无挂牌，不再重复查）")
+    if not added and not nolist and picks:
+        log(f"  [names] {len(picks)} 件这次没解析成功（网络问题，1 小时后自动重试）")
+    return added + nolist
 
 
 def fast_refresh(priority=None, log=print, only_priority=False, on_save=None, stop=None, force=False):

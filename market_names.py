@@ -149,14 +149,14 @@ def item_rows():
             if "可交易" in (rd.fieldnames or []):
                 return {r["ItemKey"]: {"NameKey": (r.get("NameKey") or "").strip(),
                                        "GRADE": r.get("品阶", ""),
-                                       "marketable": r.get("可交易") == "True"}
+                                       "marketable": r.get("可交易") != "False"}
                         for r in rd}
     legacy = os.path.join(BASE, "csv", "ItemInfoData.csv")
     if os.path.exists(legacy):
         rows = {}
         for r in csv.DictReader(open(legacy, encoding="utf-8-sig")):
             rows[r["ItemKey"]] = {"NameKey": r["NameKey"].strip(), "GRADE": r["GRADE"],
-                                  "marketable": r.get("IsCanExchangeMarketable") == "True"}
+                                  "marketable": r.get("IsCanExchangeMarketable") != "False"}
         return rows
     return _rows_from_assets()
 
@@ -179,7 +179,7 @@ def _rows_from_assets():
             for r in csv.DictReader(io.StringIO(d.m_Script.lstrip("\ufeff"))):
                 rows[r["ItemKey"]] = {"NameKey": (r.get("NameKey") or "").strip(),
                                       "GRADE": r.get("GRADE", ""),
-                                      "marketable": r.get("IsCanExchangeMarketable") == "True"}
+                                      "marketable": r.get("IsCanExchangeMarketable") != "False"}
             return rows
     except Exception:
         return {}
@@ -240,6 +240,7 @@ def _load_cache():
         _CACHE = {}
     _CACHE.setdefault("names", {})
     _CACHE.setdefault("tried", {})
+    _CACHE.setdefault("notlisted", {})   # 搜索页查过了，但同名同品阶没有挂单
     return _CACHE
 
 
@@ -319,11 +320,20 @@ def resolve_one(item_key, log=print, use_cookies=True):
     hits = [h for _c, h in sorted(cands)]   # 同名多版本（A/B/C）时取最便宜的那个
     if hits:
         c["names"][str(item_key)] = hits[0]
+        c["notlisted"].pop(str(item_key), None)
         log(f"  [names] {item_key} → {hits[0]}")
     else:
-        log(f"  [names] {item_key} 未匹配（{en} / {want_grade or '?'}）")
+        # 搜索页确实查过、但同品阶没有挂单：记下来，界面上算「无挂牌」，别每轮再查一遍
+        c["notlisted"][str(item_key)] = time.time()
+        c["names"].pop(str(item_key), None)
+        log(f"  [names] {item_key} 未匹配（{en} / {want_grade or '?'}）：市场无该品阶挂单")
     _save_cache()
     return hits[0] if hits else None
+
+
+def notlisted(item_key):
+    """搜索页查过、但市场没有这一品阶的挂单。"""
+    return str(item_key) in _load_cache()["notlisted"]
 
 
 def resolve_missing(item_keys, limit=8, log=print):
