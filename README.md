@@ -2,7 +2,7 @@
 
 给《TaskBar Hero》（Steam appid 3678970）按原版 UI 复刻的仓库/背包查看器：脱离游戏窗口单独打开，能看全部页签的物品，并显示**人民币**最低价与近 24 小时成交中位价。
 
-**版本：v1.0.8**
+**版本：v1.0.9**
 
 ![界面截图](docs/screenshot.png)
 
@@ -44,6 +44,8 @@ python tools\extract_icons.py     --game-dir "D:\SteamLibrary\steamapps\common\T
 - `extract_sprites.py` 一次性写出 `ui/` 全套：仓库面板与装饰、标题图、普通/DLC 页签、格子底与十个品阶底、按钮组。棕色 `Btn_Large_Active` 和深灰 `Btn_Large_Plain` 游戏里没有现成 Sprite，是从灰色 `Button_Large_DeActive` 按原版配色派生的；同名多档的 Sprite（关闭按钮 12/28/32）会自动取与旧版素材一致的那一档。
 - `build_item_tables.py` 从本地化 bundle 拼出 `localization_zh.json`（`ItemTable` 1504 条 + `StringTable` 1775 条），物品表/材料表/装备表直接从 `sharedassets0.assets` 里的 csv 资源读，拼出 `items_zh.csv`（7031 行）。
 - `extract_icons.py` 按 `items_zh.csv` 的「图标」列（`IconPath`，如 `AMULET_600001`）从同一个资源文件里取出全部 609 张 16×16 图标，写进 `icons/`。格子里的物品图标就靠它。
+
+`items_zh.csv` 里带「可交易」「描述键」两列，可交易标记和物品描述都从它读；`csv/` 目录已经不需要了（留着只作老版本兜底）。
 
 启动必需：`ui/` 里的面板图、`items_zh.csv`、`localization_zh.json`——缺任何一项都会启动失败，程序会弹框列出缺的文件（不再静默退出）。`icons/` 是软依赖：缺了照样能开，只是格子不显示物品图标；上面第三条命令就是补它。
 

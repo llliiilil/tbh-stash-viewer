@@ -1,5 +1,11 @@
 # 更新日志
 
+## v1.0.9 — 2026-11-26
+
+- 修新机器上的 `[names] 解析异常（FileNotFoundError: ...\csv\ItemInfoData.csv）`：查看器和 `market_names.py` 不再硬依赖 `csv/` 目录。`items_zh.csv` 新增「可交易」「描述键」两列（由 `build_item_tables.py` 从游戏资源生成），可交易标记与物品描述都从这里读；老 `items_zh.csv` 仍回落到 `csv/ItemInfoData.csv`，再不行直接从 `sharedassets0.assets` 里的 `ItemInfoData` 现读。
+- `market_names.py` 的游戏目录改成自动探测：`TBH_GAME_DIR` → 各盘 `SteamLibrary` / `Steam` → `libraryfolders.vdf`，不再写死 `D:\SteamLibrary`；新机器游戏装在 C 盘也能读到英文名 bundle。
+- 可交易信息彻底拿不到时按「可交易」处理，避免整个仓库的价格都变灰。
+- `README` 注明 `csv/` 目录已经可以删除（只有老版本兜底才会看它）。
 ## v1.0.8 — 2026-11-26
 
 - 修 `setup.bat` 的 `exit 9009`：以前只检查「文件是否存在」就认了这个 Python，Windows Store 的 `python.exe` 占位别名（以及 `TBH_PYTHON` 指错、Python 被卸载留下残路径）会让整条命令直接「找不到命令」，脚本根本没跑起来，`setup_log.txt` 里自然什么都没有。现在每个候选都要真跑一次 `python -c "import sys"` 才算数，`\WindowsApps\` 一律跳过，`TBH_PYTHON` 无效时自动继续往下找。

@@ -26,7 +26,8 @@ DEFAULT_GAME_DIR = os.environ.get("TBH_GAME_DIR") or \
     r"D:\SteamLibrary\steamapps\common\TaskbarHero\TaskBarHero_Data"
 
 TABLE_COLUMNS = ["ItemKey", "名称", "NameKey", "类型", "品阶", "部位", "装备类型", "等级",
-                 "堆叠上限", "图标", "基础属性1值", "基础属性2值", "材料类型", "仓库槽位"]
+                 "堆叠上限", "图标", "基础属性1值", "基础属性2值", "材料类型", "仓库槽位",
+                 "可交易", "描述键"]
 
 
 def _parse_table(raw):
@@ -191,6 +192,8 @@ def main():
                 "基础属性2值": gear.get("BaseStat2_Value", ""),
                 "材料类型": mat.get("MATERIALTYPE", ""),
                 "仓库槽位": mat.get("IsMaterialStashSlot", ""),
+                "可交易": r.get("IsCanExchangeMarketable", ""),
+                "描述键": (r.get("DescriptionKey") or "").strip(),
             })
             written += 1
     print(f"items_zh.csv：{written} 条 → {out_path}")

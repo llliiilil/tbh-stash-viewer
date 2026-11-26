@@ -26,7 +26,7 @@ from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
-__version__ = "1.0.8"
+__version__ = "1.0.9"
 
 SAVE = os.environ.get("TBH_SAVE") or os.path.expandvars(
     r"%USERPROFILE%\AppData\LocalLow\TesseractStudio\TaskbarHero\SaveFile_Live.es3")
@@ -491,13 +491,39 @@ class Viewer(tk.Tk):
         self.bind("<Escape>", lambda e: self.destroy())
         self.items = {r["ItemKey"]: r for r in
                       csv.DictReader(open(ITEMS, encoding="utf-8-sig"))}
+        # 可交易 / 描述：新版 items_zh.csv 自带这两列；老文件回落到 csv/ItemInfoData.csv
+        loc = {}
         try:
-            self.market = {r["ItemKey"]: r.get("IsCanExchangeMarketable") == "True"
-                           for r in csv.DictReader(
-                               open(os.path.join(BASE, "csv", "ItemInfoData.csv"),
-                                    encoding="utf-8-sig"))}
+            loc = json.load(open(os.path.join(BASE, "localization_zh.json"),
+                                 encoding="utf-8"))["ItemTable"]
         except Exception:
-            self.market = {}
+            pass
+        self.market = {}
+        self.desc = {}
+        sample = next(iter(self.items.values()), {})
+        if "可交易" in sample:
+            self.market = {k: r.get("可交易") == "True" for k, r in self.items.items()}
+            self.desc = {k: loc[r["描述键"]] for k, r in self.items.items()
+                         if r.get("描述键") and r["描述键"] in loc}
+        else:
+            try:
+                self.market = {r["ItemKey"]: r.get("IsCanExchangeMarketable") == "True"
+                               for r in csv.DictReader(
+                                   open(os.path.join(BASE, "csv", "ItemInfoData.csv"),
+                                        encoding="utf-8-sig"))}
+            except Exception:
+                self.market = {}
+            try:
+                for r in csv.DictReader(
+                        open(os.path.join(BASE, "csv", "ItemInfoData.csv"),
+                             encoding="utf-8-sig")):
+                    dk = (r.get("DescriptionKey") or "").strip()
+                    if dk and dk in loc:
+                        self.desc[r["ItemKey"]] = loc[dk]
+            except Exception:
+                pass
+        # 没有任何可交易信息时（老 items_zh.csv 且无 csv/），先按"可交易"处理，避免全变灰
+        self._market_known = bool(self.market)
         # Steam 市场价格缓存 + CNY 实时价缓存（悬停按需拉取）
         self.prices = {}
         self._load_prices()
@@ -508,19 +534,6 @@ class Viewer(tk.Tk):
         self._cny_inflight = set()
         self._cny_done = {}          # 拉取线程写入，主线程 _cny_drain 轮询消费
         self._cny_cooldown = 0.0     # 429 冷却截止时间
-        # 描述映射（材料类 149 条）
-        self.desc = {}
-        try:
-            import csv as _csv
-            loc = json.load(open(os.path.join(BASE, "localization_zh.json"),
-                                 encoding="utf-8"))["ItemTable"]
-            for r in _csv.DictReader(open(os.path.join(BASE, "csv", "ItemInfoData.csv"),
-                                          encoding="utf-8-sig")):
-                dk = (r.get("DescriptionKey") or "").strip()
-                if dk and dk in loc:
-                    self.desc[r["ItemKey"]] = loc[dk]
-        except Exception:
-            pass
         threading.Thread(target=self._price_loop, daemon=True).start()
         # 悬停轮询前置状态（_rebuild_hotspots 会填充，先初始化防空窗期报错）
         self._cell_recs = {}
@@ -1146,7 +1159,7 @@ class Viewer(tk.Tk):
             self._tipwin = ItemTooltip(self)
         rec = dict(rec)
         k = str(rec.get("ItemKey", ""))
-        rec["_marketable"] = self.market.get(k, False)
+        rec["_marketable"] = self.market.get(k, not self._market_known)
         rec["_price"] = self.prices.get(k)
         rec["_desc"] = self.desc.get(k)
         rec["_prices_updated"] = getattr(self, "prices_updated", "")
@@ -1346,7 +1359,7 @@ class Viewer(tk.Tk):
             rec = dict(self.items.get(str(k), {})) if k else None
             self._cell_labels[i] = self._add_hotspot(cx, cy, self.CELL, self.CELL)
             if rec:
-                rec["_marketable"] = self.market.get(str(k), False)
+                rec["_marketable"] = self.market.get(str(k), not self._market_known)
                 self._cell_recs[i] = rec
 
     def select_tab(self, key):
@@ -1525,9 +1538,9 @@ if __name__ == "__main__":
         if miss:
             raise RuntimeError(
                 "缺少游戏素材，无法启动：\n  " + "\n  ".join(miss) +
-                "\n\n这些文件不随仓库分发。从能用的机器上把 ui\\、icons\\、csv\\、"
-                "items_zh.csv、localization_zh.json 复制过来，"
-                "或用 tools\\extract_sprites.py 从本机游戏目录提取。")
+                "\n\n这些文件不随仓库分发。双击 setup.bat 会自动生成（ui/、icons/、"
+                "items_zh.csv、localization_zh.json）；手动跑就是 tools\\extract_sprites.py、"
+                "tools\\build_item_tables.py、tools\\extract_icons.py。")
         Viewer().mainloop()
     except Exception as e:              # 缺素材 / 缺依赖 / 存档解析异常都不该静默退出
         _startup_failure(e)

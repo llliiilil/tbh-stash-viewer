@@ -10,6 +10,7 @@
 只服务「仓库/背包里新出现、且可交易」的物品，一次少量（一张页面约 645KB）。
 """
 import csv
+import io
 import json
 import os
 import re
@@ -18,8 +19,42 @@ import time
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 # 游戏安装目录（可用环境变量 TBH_GAME_DIR 覆盖）：只用来读本地化 bundle 里的英文物品名
-GAME_DIR = os.environ.get("TBH_GAME_DIR") or \
-    r"D:\SteamLibrary\steamapps\common\TaskbarHero\TaskBarHero_Data"
+_FALLBACK_GAME_DIR = r"D:\SteamLibrary\steamapps\common\TaskbarHero\TaskBarHero_Data"
+
+
+def _detect_game_dir():
+    """新机器上游戏不一定装在 D 盘：环境变量 → 各盘 Steam 库 → libraryfolders.vdf。"""
+    env = os.environ.get("TBH_GAME_DIR")
+    if env and os.path.exists(os.path.join(env, "sharedassets0.assets")):
+        return env
+    roots = []
+    for e in ("ProgramFiles(x86)", "ProgramFiles"):
+        v = os.environ.get(e)
+        if v:
+            roots.append(os.path.join(v, "Steam"))
+    for d in "CDEFGH":
+        roots.append(os.path.join(f"{d}:\\", "SteamLibrary"))
+        roots.append(os.path.join(f"{d}:\\", "Steam"))
+        roots.append(os.path.join(f"{d}:\\", "Program Files (x86)", "Steam"))
+    for root in list(roots):
+        for vdf in (os.path.join(root, "steamapps", "libraryfolders.vdf"),
+                    os.path.join(root, "config", "libraryfolders.vdf")):
+            if not os.path.exists(vdf):
+                continue
+            try:
+                text = open(vdf, encoding="utf-8", errors="ignore").read()
+            except Exception:
+                continue
+            roots += [m.group(1).replace("\\\\", "\\")
+                      for m in re.finditer(r'"path"\s+"([^"]+)"', text)]
+    for root in roots:
+        cand = os.path.join(root, "steamapps", "common", "TaskbarHero", "TaskBarHero_Data")
+        if os.path.exists(os.path.join(cand, "sharedassets0.assets")):
+            return cand
+    return _FALLBACK_GAME_DIR
+
+
+GAME_DIR = _detect_game_dir()
 AA = os.path.join(GAME_DIR, "StreamingAssets", "aa", "StandaloneWindows64")
 CACHE_PATH = os.path.join(BASE, "market_names.json")
 EN_CACHE = os.path.join(BASE, "en_names_cache.json")
@@ -102,13 +137,53 @@ def en_names(log=print):
 
 
 def item_rows():
-    """ItemKey -> {NameKey, GRADE, marketable}"""
-    rows = {}
-    for r in csv.DictReader(open(os.path.join(BASE, "csv", "ItemInfoData.csv"),
-                                encoding="utf-8-sig")):
-        rows[r["ItemKey"]] = {"NameKey": r["NameKey"].strip(), "GRADE": r["GRADE"],
-                              "marketable": r.get("IsCanExchangeMarketable") == "True"}
-    return rows
+    """ItemKey -> {NameKey, GRADE, marketable}
+
+    新版 items_zh.csv 自带「可交易」列，直接用它；老文件没有这一列，回落到 csv/ItemInfoData.csv，
+    再不行就从游戏本体（sharedassets0.assets 里的 TextAsset）现读，保证新机器不装 csv/ 也能用。
+    """
+    path = os.path.join(BASE, "items_zh.csv")
+    if os.path.exists(path):
+        with open(path, encoding="utf-8-sig") as f:
+            rd = csv.DictReader(f)
+            if "可交易" in (rd.fieldnames or []):
+                return {r["ItemKey"]: {"NameKey": (r.get("NameKey") or "").strip(),
+                                       "GRADE": r.get("品阶", ""),
+                                       "marketable": r.get("可交易") == "True"}
+                        for r in rd}
+    legacy = os.path.join(BASE, "csv", "ItemInfoData.csv")
+    if os.path.exists(legacy):
+        rows = {}
+        for r in csv.DictReader(open(legacy, encoding="utf-8-sig")):
+            rows[r["ItemKey"]] = {"NameKey": r["NameKey"].strip(), "GRADE": r["GRADE"],
+                                  "marketable": r.get("IsCanExchangeMarketable") == "True"}
+        return rows
+    return _rows_from_assets()
+
+
+def _rows_from_assets():
+    """直接从游戏资源里的 ItemInfoData 表取字段（最后一条兜底）。"""
+    path = os.path.join(GAME_DIR, "sharedassets0.assets")
+    if not os.path.exists(path):
+        return {}
+    try:
+        import UnityPy
+        env = UnityPy.load(path)
+        for obj in env.objects:
+            if obj.type.name != "TextAsset":
+                continue
+            d = obj.read(check_read=False)
+            if getattr(d, "m_Name", "") != "ItemInfoData":
+                continue
+            rows = {}
+            for r in csv.DictReader(io.StringIO(d.m_Script.lstrip("\ufeff"))):
+                rows[r["ItemKey"]] = {"NameKey": (r.get("NameKey") or "").strip(),
+                                      "GRADE": r.get("GRADE", ""),
+                                      "marketable": r.get("IsCanExchangeMarketable") == "True"}
+            return rows
+    except Exception:
+        return {}
+    return {}
 
 
 _INDEX = None
